@@ -1,0 +1,28 @@
+import fs from "node:fs/promises";
+import path from "node:path";
+import { createHash, randomUUID } from "node:crypto";
+import type { DeploymentTarget } from "../ports/deploymentTarget.js";
+import { FilesystemMutationLock } from "../infrastructure/filesystemMutationLock.js";
+
+export interface DeploymentRecord { deploymentId: string; startedAt: string; completedAt?: string; target: string; sourceDistHash: string; remoteRevision?: string; result: "succeeded" | "failed"; error?: string; }
+export class DeployService {
+  private readonly ledger: string; private readonly lock: FilesystemMutationLock;
+  constructor(private readonly vaultRoot: string, private readonly target?: DeploymentTarget) { this.ledger = path.join(vaultRoot, "canonical", "deployments", "ledger.json"); this.lock = new FilesystemMutationLock(vaultRoot); }
+  async status() { return { target: this.target?.name ?? "unconfigured", deployments: await this.records() }; }
+  async deploy(dryRun = false): Promise<DeploymentRecord> { if (!this.target && !dryRun) throw new Error("Deployment target is not configured. Set EBS_GITHUB_PAGES_DIR or use --dry-run."); return this.lock.withLock("deploy", async () => { const hash = await treeHash(path.join(this.vaultRoot, "dist")); const previous = (await this.records()).find((item) => item.result === "succeeded" && item.sourceDistHash === hash); if (previous) return { ...previous, result: "succeeded", error: "no-op: identical dist already deployed" }; const record: DeploymentRecord = { deploymentId: `dep-${randomUUID()}`, startedAt: new Date().toISOString(), target: this.target?.name ?? "unconfigured", sourceDistHash: hash, result: "failed" }; if (dryRun) return { ...record, result: "succeeded", completedAt: new Date().toISOString(), error: "dry-run" }; try { const result = await this.target!.deploy(path.join(this.vaultRoot, "dist"), hash); record.result = "succeeded"; record.completedAt = new Date().toISOString(); record.remoteRevision = result.remoteRevision; await this.append(record); return record; } catch (error) { record.completedAt = new Date().toISOString(); record.error = error instanceof Error ? error.message : String(error); await this.append(record); throw error; } }); }
+  async rollback(revision: string): Promise<DeploymentRecord> { if (!this.target?.rollback) throw new Error("Deployment target does not support rollback"); const result = await this.target.rollback(revision); const record: DeploymentRecord = { deploymentId: `dep-${randomUUID()}`, startedAt: new Date().toISOString(), completedAt: new Date().toISOString(), target: this.target.name, sourceDistHash: "rollback", remoteRevision: result.remoteRevision ?? revision, result: "succeeded" }; await this.append(record); return record; }
+  private async records(): Promise<DeploymentRecord[]> { try { return JSON.parse(await fs.readFile(this.ledger, "utf8")) as DeploymentRecord[]; } catch { return []; } }
+  private async append(record: DeploymentRecord) { const records = await this.records(); records.push(record); await fs.mkdir(path.dirname(this.ledger), { recursive: true }); const temp = `${this.ledger}.${randomUUID()}.tmp`; await fs.writeFile(temp, JSON.stringify(records, null, 2)); await fs.rename(temp, this.ledger); }
+}
+
+/** Vendor-neutral directory target for shared hosting staging and GitHub Pages clones. */
+export class DirectoryDeploymentTarget implements DeploymentTarget {
+  readonly name: string = "directory";
+  constructor(private readonly directory: string) {}
+  async deploy(distDir: string, hash: string) { const temporary = `${this.directory}.tmp-${randomUUID()}`; await fs.rm(temporary, { recursive: true, force: true }); await copyTree(distDir, temporary); const old = `${this.directory}.previous`; await fs.rm(old, { recursive: true, force: true }); if (await fs.stat(this.directory).then(() => true).catch(() => false)) await fs.rename(this.directory, old); try { await fs.rename(temporary, this.directory); await fs.rm(old, { recursive: true, force: true }); } catch (error) { if (await fs.stat(old).then(() => true).catch(() => false)) await fs.rename(old, this.directory); throw error; } return { remoteRevision: hash, message: `Copied portable dist to ${this.directory}` }; }
+  async status() { return { directory: this.directory, exists: await fs.stat(this.directory).then(() => true).catch(() => false) }; }
+}
+export class GitHubPagesDeploymentTarget extends DirectoryDeploymentTarget { override readonly name = "github-pages-directory"; }
+async function copyTree(source: string, target: string) { await fs.mkdir(target, { recursive: true }); for (const item of await fs.readdir(source, { withFileTypes: true })) { const from = path.join(source, item.name); const to = path.join(target, item.name); if (item.isDirectory()) await copyTree(from, to); else await fs.copyFile(from, to); } }
+async function treeHash(root: string) { const hash = createHash("sha256"); for (const file of (await files(root)).sort()) { hash.update(path.relative(root, file).replace(/\\/g, "/")); hash.update(await fs.readFile(file)); } return hash.digest("hex"); }
+async function files(directory: string): Promise<string[]> { const result:string[]=[]; for (const item of await fs.readdir(directory, { withFileTypes:true })) { const target=path.join(directory,item.name); if(item.isDirectory())result.push(...await files(target));else result.push(target); } return result; }

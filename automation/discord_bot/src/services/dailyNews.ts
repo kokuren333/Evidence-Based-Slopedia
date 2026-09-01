@@ -75,6 +75,8 @@ export async function enqueueDailyNewsJobs(
       query: buildDailyNewsQuery(newsField, date, targetPath),
       mode: "new",
       jobType: "daily_news",
+      priority: "P3",
+      idempotencyKey: `news:${date}:${newsField.slug}`,
       discordUserId: input.discordUserId,
       channelId: input.channelId,
       guildId: input.guildId,

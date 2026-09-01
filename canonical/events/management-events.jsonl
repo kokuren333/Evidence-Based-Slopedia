@@ -1,0 +1,2 @@
+{"operationId":"b131d1e0-dec5-4410-be1a-716b6ccb190e","articleId":"art_FA3A6B44A79B112D6F95006B73","operation":"create","phase":"started","timestamp":"2026-09-01T15:38:49.165Z","actor":"system","origin":"migration"}
+{"operationId":"b131d1e0-dec5-4410-be1a-716b6ccb190e","articleId":"art_FA3A6B44A79B112D6F95006B73","operation":"create","phase":"completed","timestamp":"2026-09-01T15:38:49.179Z","actor":"system","origin":"migration","revision":1}

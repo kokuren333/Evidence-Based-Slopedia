@@ -7,11 +7,20 @@ import { assertAdmin } from "../services/accessControl.js";
 import { enqueueDailyForecastJobs } from "../services/dailyForecast.js";
 import { enqueueDailyNewsJobs } from "../services/dailyNews.js";
 import { enqueueImageMaintenanceJob } from "../services/imageMaintenance.js";
-import { enqueueMocMaintenanceJob } from "../services/mocMaintenance.js";
+import { rebuildDeterministicMoc } from "../services/mocMaintenance.js";
 import { resourceSnapshot } from "../services/resourceGuard.js";
 import type { Job } from "../types.js";
+import type { CreateJobInput } from "../types.js";
+import type { JobService } from "../../../ebs/core/src/services/jobService.js";
+import type { AutoGenerationService } from "../../../ebs/core/src/services/autoGenerationService.js";
+import type { SchedulerService } from "../../../ebs/core/src/services/schedulerService.js";
 
-export function createDiscordClient(store: JobStore, getWorkerPool: () => WorkerPool): Client {
+export function createDiscordClient(
+  store: JobStore,
+  jobService: JobService<Job, CreateJobInput>,
+  getWorkerPool: () => WorkerPool,
+  autoControl?: { auto: AutoGenerationService; scheduler: SchedulerService },
+): Client {
   const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
   client.once(Events.ClientReady, (readyClient) => {
@@ -24,7 +33,7 @@ export function createDiscordClient(store: JobStore, getWorkerPool: () => Worker
       if (interaction.commandName === "article") {
         const query = interaction.options.getString("query", true);
         const mode = (interaction.options.getString("mode") ?? "new") as "new" | "update";
-        const job = await store.create({
+        const job = await jobService.enqueue({
           query,
           mode,
           discordUserId: interaction.user.id,
@@ -33,7 +42,7 @@ export function createDiscordClient(store: JobStore, getWorkerPool: () => Worker
           model: config.codex.model,
           reasoningEffort: config.codex.reasoningEffort,
         });
-        const queued = await store.countByStatus("queued");
+        const queued = (await jobService.getQueueStatus()).counts.queued;
         await interaction.reply(
           [
             "記事作成ジョブを受け付けました。",
@@ -47,7 +56,7 @@ export function createDiscordClient(store: JobStore, getWorkerPool: () => Worker
         const query = interaction.options.getString("query", true).trim();
         const count = interaction.options.getInteger("count", true);
         const articleQueries = buildMultiArticleQueries(query, count);
-        const jobs = await store.createMany(
+        const jobs = await jobService.enqueueMany(
           articleQueries.map((articleQuery) => ({
             query: articleQuery,
             mode: "new",
@@ -58,7 +67,7 @@ export function createDiscordClient(store: JobStore, getWorkerPool: () => Worker
             reasoningEffort: config.codex.reasoningEffort,
           })),
         );
-        const queued = await store.countByStatus("queued");
+        const queued = (await jobService.getQueueStatus()).counts.queued;
         await interaction.reply(
           [
             "Multi-article jobs queued.",
@@ -75,7 +84,7 @@ export function createDiscordClient(store: JobStore, getWorkerPool: () => Worker
       } else if (interaction.commandName === "codex") {
         assertAdmin(interaction.user.id);
         const query = interaction.options.getString("query", true);
-        const job = await store.create({
+        const job = await jobService.enqueue({
           query,
           mode: "new",
           discordUserId: interaction.user.id,
@@ -85,7 +94,7 @@ export function createDiscordClient(store: JobStore, getWorkerPool: () => Worker
           reasoningEffort: config.codex.reasoningEffort,
           jobType: "codex",
         });
-        const queued = await store.countByStatus("queued");
+        const queued = (await jobService.getQueueStatus()).counts.queued;
         await interaction.reply(
           [
             "Codex root query queued.",
@@ -98,18 +107,18 @@ export function createDiscordClient(store: JobStore, getWorkerPool: () => Worker
         );
       } else if (interaction.commandName === "job-status") {
         const jobId = interaction.options.getString("job_id", true);
-        const job = await store.get(jobId);
-        await interaction.reply(job ? formatJob(job) : `Job not found: \`${jobId}\``);
+        const job = await jobService.status(jobId);
+        await interaction.reply(formatJob(job));
       } else if (interaction.commandName === "job-cancel") {
         assertAdmin(interaction.user.id);
         const jobId = interaction.options.getString("job_id", true);
-        const job = await store.cancel(jobId);
+        const job = await jobService.cancel(jobId);
         const aborted = getWorkerPool().cancelActiveJob(jobId);
         await interaction.reply(`cancel requested: \`${job.id}\` status=\`${job.status}\` active_abort=\`${aborted}\``);
       } else if (interaction.commandName === "job-retry") {
         assertAdmin(interaction.user.id);
         const jobId = interaction.options.getString("job_id", true);
-        const job = await store.retry(jobId);
+        const job = await jobService.retry(jobId);
         await interaction.reply(`retry queued: \`${job.id}\` from \`${jobId}\``);
       } else if (interaction.commandName === "daily-news") {
         assertAdmin(interaction.user.id);
@@ -154,22 +163,15 @@ export function createDiscordClient(store: JobStore, getWorkerPool: () => Worker
       } else if (interaction.commandName === "moc-maintenance") {
         assertAdmin(interaction.user.id);
         const scope = (interaction.options.getString("scope") ?? "all") as "all" | "published" | "daily";
-        const job = await enqueueMocMaintenanceJob(store, {
-          channelId: interaction.channelId,
-          guildId: interaction.guildId,
-          discordUserId: interaction.user.id,
-          scope,
-        });
-        const queued = await store.countByStatus("queued");
+        const result = await rebuildDeterministicMoc(scope);
         await interaction.reply(
           [
-            "MOC maintenance queued.",
-            `job: \`${job.id}\``,
+            "Deterministic MOC rebuild completed without LLM generation.",
             `scope: \`${scope}\``,
-            `queued: \`${queued}\``,
-            `workers: \`${config.workers.maxWorkers}\``,
-            `model: \`${job.model} ${job.reasoningEffort}\``,
-          ].join("\n"),
+            `public articles: \`${result.publicArticleCount}\``,
+            `generated: \`${result.generatedDir}\``,
+            result.dailyDeferred ? "Daily MOC remains on its separate compatibility path." : undefined,
+          ].filter(Boolean).join("\n"),
         );
       } else if (interaction.commandName === "image_maintenance") {
         assertAdmin(interaction.user.id);
@@ -180,7 +182,7 @@ export function createDiscordClient(store: JobStore, getWorkerPool: () => Worker
           discordUserId: interaction.user.id,
           scope,
         });
-        const queued = await store.countByStatus("queued");
+        const queued = (await jobService.getQueueStatus()).counts.queued;
         await interaction.reply(
           [
             "Image maintenance queued.",
@@ -203,7 +205,7 @@ export function createDiscordClient(store: JobStore, getWorkerPool: () => Worker
           ].join("\n"),
         );
       } else if (interaction.commandName === "job-list") {
-        const jobs = await store.recent(10);
+        const jobs = await jobService.list(10);
         await interaction.reply(jobs.length ? jobs.map(formatJobLine).join("\n") : "No jobs yet.");
       } else if (interaction.commandName === "worker-list") {
         const workers = getWorkerPool().listActiveWorkers();
@@ -214,12 +216,21 @@ export function createDiscordClient(store: JobStore, getWorkerPool: () => Worker
         );
       } else if (interaction.commandName === "queue-pause") {
         assertAdmin(interaction.user.id);
-        const state = await store.setQueuePaused(true);
+        const state = await jobService.pauseQueue();
         await interaction.reply(`queue paused: \`${state.queuePaused}\``);
       } else if (interaction.commandName === "queue-resume") {
         assertAdmin(interaction.user.id);
-        const state = await store.setQueuePaused(false);
+        const state = await jobService.resumeQueue();
         await interaction.reply(`queue paused: \`${state.queuePaused}\``);
+      } else if (interaction.commandName === "auto-status") {
+        if (!autoControl) throw new Error("Autonomous generation is not configured.");
+        await interaction.reply(["```json", JSON.stringify(await autoControl.auto.status(), null, 2).slice(0, 1800), "```"].join("\n"));
+      } else if (interaction.commandName === "auto-pause") {
+        assertAdmin(interaction.user.id); if (!autoControl) throw new Error("Autonomous generation is not configured."); await interaction.reply(`auto paused: \`${(await autoControl.auto.pause()).manualPaused}\``);
+      } else if (interaction.commandName === "auto-resume") {
+        assertAdmin(interaction.user.id); if (!autoControl) throw new Error("Autonomous generation is not configured."); await interaction.reply(`auto paused: \`${(await autoControl.auto.resume()).manualPaused}\``);
+      } else if (interaction.commandName === "auto-run") {
+        assertAdmin(interaction.user.id); if (!autoControl) throw new Error("Autonomous generation is not configured."); await interaction.deferReply(); await interaction.editReply(["```json", JSON.stringify(await autoControl.scheduler.tick(true), null, 2).slice(0, 1800), "```"].join("\n"));
       } else if (interaction.commandName === "git-status") {
         const status = await gitStatus();
         await interaction.reply(["```text", status.slice(0, 1800), "```"].join("\n"));
@@ -235,10 +246,11 @@ export function createDiscordClient(store: JobStore, getWorkerPool: () => Worker
           await interaction.editReply(`git add/commit/push completed: \`${sha.slice(0, 12)}\``);
         }
       } else if (interaction.commandName === "bot-health") {
-        const state = await store.state();
-        const queued = await store.countByStatus("queued");
-        const running = await store.countByStatus("running");
-        const publishing = await store.countByStatus("publishing");
+        const queueStatus = await jobService.getQueueStatus();
+        const state = queueStatus.queue;
+        const queued = queueStatus.counts.queued;
+        const running = queueStatus.counts.running;
+        const publishing = queueStatus.counts.publishing;
         const resource = await resourceSnapshot();
         const workers = getWorkerPool().listActiveWorkers();
         await interaction.reply(

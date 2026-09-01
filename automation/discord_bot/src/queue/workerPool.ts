@@ -1,5 +1,6 @@
 import { config } from "../config.js";
-import { commitWorkerChanges, publishWorkerBranch } from "../runners/gitPublisher.js";
+import path from "node:path";
+import { commitWorkerChanges, publishCanonicalManagementState, publishWorkerBranch } from "../runners/gitPublisher.js";
 import { assertArticleImagePaths } from "../runners/imagePathChecker.js";
 import { assertMocIntegrity } from "../runners/mocIntegrityChecker.js";
 import { hasDurableArticleChanges } from "../runners/publishGateChecker.js";
@@ -10,28 +11,36 @@ import { writeJobLog } from "../services/logWriter.js";
 import type { Job } from "../types.js";
 import type { JobStore } from "./jobStore.js";
 import type { Notifier } from "../services/notifier.js";
-
-interface ActiveWorker {
-  jobId: string;
-  startedAt: string;
-  abortController: AbortController;
-}
+import { WorkerSupervisor } from "../../../ebs/core/src/services/workerSupervisor.js";
+import { FilesystemArticleRepository } from "../../../ebs/core/src/infrastructure/filesystemArticleRepository.js";
+import { ReconciliationService } from "../../../ebs/core/src/services/reconciliationService.js";
+import { runGit } from "../utils/shell.js";
+import { CandidateRegistry } from "../../../ebs/core/src/services/candidateRegistry.js";
+import { IndexService } from "../../../ebs/core/src/services/indexService.js";
+import { BuildService } from "../../../ebs/core/src/services/buildService.js";
 
 export class WorkerPool {
-  private active = 0;
   private timer: NodeJS.Timeout | undefined;
-  private activeWorkers = new Map<string, ActiveWorker>();
+  private readonly supervisor: WorkerSupervisor<Job>;
 
   constructor(
     private readonly store: JobStore,
     private readonly notifier: Notifier,
-  ) {}
+  ) {
+    this.supervisor = new WorkerSupervisor<Job>({
+      repository: store,
+      resourceGuard: { canStart: canStartWorker },
+      maxWorkers: config.workers.maxWorkers,
+      runJob: (job, _signal) => this.runJob(job),
+      onGuardBlocked: (reason) => writeJobLog("resource-guard", `${new Date().toISOString()} ${reason}`).then(() => undefined),
+    });
+  }
 
   start(): void {
     this.timer = setInterval(() => {
-      void this.tick();
+      void this.supervisor.tick();
     }, 5000);
-    void this.tick();
+    void this.supervisor.tick();
   }
 
   stop(): void {
@@ -39,35 +48,15 @@ export class WorkerPool {
   }
 
   async tick(): Promise<void> {
-    const state = await this.store.state();
-    if (state.queuePaused) return;
-    while (this.active < config.workers.maxWorkers) {
-      const guard = await canStartWorker();
-      if (!guard.ok) {
-        await writeJobLog("resource-guard", `${new Date().toISOString()} ${guard.reason}`);
-        return;
-      }
-      const job = await this.store.nextQueued();
-      if (!job) return;
-      this.active += 1;
-      const abortController = new AbortController();
-      this.activeWorkers.set(job.id, { jobId: job.id, startedAt: new Date().toISOString(), abortController });
-      void this.runJob(job).finally(() => {
-        this.active -= 1;
-        this.activeWorkers.delete(job.id);
-      });
-    }
+    await this.supervisor.tick();
   }
 
-  listActiveWorkers(): ActiveWorker[] {
-    return [...this.activeWorkers.values()];
+  listActiveWorkers() {
+    return this.supervisor.listActiveWorkers();
   }
 
   cancelActiveJob(jobId: string): boolean {
-    const worker = this.activeWorkers.get(jobId);
-    if (!worker) return false;
-    worker.abortController.abort();
-    return true;
+    return this.supervisor.cancelActiveJob(jobId);
   }
 
   async cleanupFailedWorktrees(olderThanDays: number, dryRun: boolean): Promise<string[]> {
@@ -99,10 +88,10 @@ export class WorkerPool {
   private async runJob(initialJob: Job): Promise<void> {
     let job = initialJob;
     try {
-      await this.notifier.jobStarted(job, this.active, config.workers.maxWorkers);
+      await this.notifier.jobStarted(job, this.supervisor.listActiveWorkers().length, config.workers.maxWorkers);
       await this.throwIfCancelled(job.id);
       if (job.jobType === "codex") {
-        const activeWorker = this.activeWorkers.get(job.id);
+        const activeWorker = this.supervisor.listActiveWorkers().find((worker) => worker.jobId === job.id);
         await runCodexForJob(job, activeWorker?.abortController.signal);
         job = await this.store.update(job.id, {
           status: "succeeded",
@@ -115,7 +104,7 @@ export class WorkerPool {
         await writeJobLog(job.id, `Created worktree ${workspace.worktreePath} on ${workspace.branchName}`);
 
         await this.throwIfCancelled(job.id);
-        const activeWorker = this.activeWorkers.get(job.id);
+        const activeWorker = this.supervisor.listActiveWorkers().find((worker) => worker.jobId === job.id);
         await runCodexForJob(job, activeWorker?.abortController.signal);
         if (job.jobType === "moc_maintenance") {
           await assertMocIntegrity(job.worktreePath!);
@@ -147,6 +136,18 @@ export class WorkerPool {
           finishedAt: new Date().toISOString(),
           resultSummary: "Published to private repository.",
         });
+        if (job.article) {
+          const articleId = job.article.articleId;
+          const sourcePath = await this.resolveCompletedArticlePath(job, pushedCommitSha);
+          const reconciliation = await new ReconciliationService(config.paths.vaultRoot, new FilesystemArticleRepository(config.paths.vaultRoot), this.store).reconcileJob(job, sourcePath);
+          if (reconciliation?.reviewRequired) throw new Error(`Article reconciliation review required: ${reconciliation.message}`);
+          const canonicalSha = await publishCanonicalManagementState(); job = await this.store.update(job.id, { pushedCommitSha: canonicalSha, resultSummary: `Published article at ${pushedCommitSha}; canonical reconciliation at ${canonicalSha}.` });
+          const reconciledArticle = await new FilesystemArticleRepository(config.paths.vaultRoot).getById(articleId);
+          if (reconciledArticle?.autonomous?.candidateId) {
+            await new CandidateRegistry(path.join(config.paths.vaultRoot, "canonical", "autonomous", "registry.json")).update(reconciledArticle.autonomous.candidateId, { status: "generated", articleId: reconciledArticle.id, jobId: job.id, lastAttemptAt: new Date().toISOString() });
+            const indexService = new IndexService(config.paths.vaultRoot, new FilesystemArticleRepository(config.paths.vaultRoot)); await indexService.rebuildAll(); await new BuildService(config.paths.vaultRoot, new FilesystemArticleRepository(config.paths.vaultRoot), indexService).build();
+          }
+        }
 
         if (!config.workers.keepSuccessfulWorktrees && job.worktreePath && job.branchName) {
           await removeWorktree(job.worktreePath, job.branchName);
@@ -159,7 +160,7 @@ export class WorkerPool {
       const failedStatus =
         errorText.toLowerCase().includes("cancelled") || errorText.toLowerCase().includes("aborted")
           ? "cancelled"
-          : errorText.toLowerCase().includes("merge conflict")
+          : errorText.toLowerCase().includes("merge conflict") || errorText.toLowerCase().includes("reconciliation review required")
             ? "failed_review_required"
             : "failed";
       const updated = await this.store.update(initialJob.id, {
@@ -167,6 +168,10 @@ export class WorkerPool {
         errorMessage: error instanceof Error ? error.message : String(error),
         finishedAt: new Date().toISOString(),
       });
+      if (updated.article) {
+        const articles = new FilesystemArticleRepository(config.paths.vaultRoot); await new ReconciliationService(config.paths.vaultRoot, articles, this.store).reconcileJob(updated).catch(() => undefined);
+        const failedArticle = await articles.getById(updated.article.articleId); if (failedArticle?.autonomous?.candidateId) await new CandidateRegistry(path.join(config.paths.vaultRoot, "canonical", "autonomous", "registry.json")).recordFailure(failedArticle.autonomous.candidateId, [60, 360, 1440, 10080]).catch(() => undefined);
+      }
       await writeJobLog(initialJob.id, `FAILED\n${updated.errorMessage ?? String(error)}`);
       if (!config.workers.keepFailedWorktrees && current.worktreePath && current.branchName) {
         await removeWorktree(current.worktreePath, current.branchName).catch(() => undefined);
@@ -180,5 +185,12 @@ export class WorkerPool {
     if (job?.cancelRequested) {
       throw new Error("Job cancelled by administrator.");
     }
+  }
+
+  private async resolveCompletedArticlePath(job: Job, pushedCommitSha: string): Promise<string | undefined> {
+    if (!job.article) return undefined;
+    try { await import("node:fs/promises").then((fs) => fs.access(path.join(config.paths.vaultRoot, job.article!.sourcePath))); return job.article.sourcePath; } catch { /* discover newly selected EBE path */ }
+    const diff = await runGit(config.paths.vaultRoot, ["diff", "--name-only", `${pushedCommitSha}^1`, pushedCommitSha]);
+    if (diff.code !== 0) return undefined; const candidates = diff.stdout.split(/\r?\n/).map((entry) => entry.trim().replace(/\\/g, "/")).filter((entry) => entry.startsWith("10_Published/") && entry.endsWith(".md") && !entry.endsWith("/_MOC.md")); return candidates.length === 1 ? candidates[0] : undefined;
   }
 }

@@ -2,6 +2,7 @@ import { config } from "../config.js";
 import type { Job } from "../types.js";
 import { ensureDir, safeBranchName, safeWorktreePath } from "../utils/paths.js";
 import { requireOk, runGit } from "../utils/shell.js";
+import type { WorktreeManager } from "../../../ebs/core/src/ports/worktreeManager.js";
 
 export async function createWorktree(job: Job): Promise<{ branchName: string; worktreePath: string }> {
   await ensureDir(config.paths.worktreeRoot);
@@ -28,3 +29,8 @@ export async function removeWorktree(worktreePath: string, branchName: string): 
   await runGit(config.paths.vaultRoot, ["worktree", "remove", "--force", worktreePath], 180_000);
   await runGit(config.paths.vaultRoot, ["branch", "-D", branchName], 120_000);
 }
+
+export const gitWorktreeManager: WorktreeManager<Job> = {
+  create: createWorktree,
+  remove: removeWorktree,
+};

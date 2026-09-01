@@ -30,6 +30,7 @@ Discord command
   - `EBE_VAULT_ROOT` 直下でCodex CLIを直接実行する。
   - worktree作成、Publish Gate、commit、pushは自動では行わない。
   - 自由度が高いぶん危険度も高いため、`DISCORD_ADMIN_USER_IDS` のユーザーだけが使える。
+  - Deprecated management escape hatch: do not use `/codex` as the canonical EBS management path.
 
 - `/daily-news date:"2026-05-02"`
   - 管理者専用。
@@ -43,8 +44,8 @@ Discord command
 
 - `/moc-maintenance scope:all`
   - 管理者専用。
-  - 公開記事・日次記事のMOCを再構成する。
-  - `scope` は `all`、`published`、`daily`。
+  - encyclopedia metadataから`generated/moc/`を決定論的に再構成する。LLMは使用しない。
+  - `scope` は `all`または`published`。`daily`はDaily identity移行までreview-only。
 
 - `/image_maintenance scope:all`
   - 管理者専用。
@@ -99,6 +100,31 @@ Discord command
 - worker worktreeはVault repositoryの外に作る。
 - `/codex`、`/daily-news`、`/daily_forecast`、`/moc-maintenance`、`/image_maintenance`、`/job-cancel`、`/job-retry`、`/queue-pause`、`/queue-resume`、`/git-debug`、`/job-cleanup` は管理者向け。
 - 管理者は `.env` の `DISCORD_ADMIN_USER_IDS` にDiscord user IDをカンマ区切りで設定する。
+
+## EBS Phase 3 CLI
+
+`automation/discord_bot/`から実行する。
+
+```powershell
+npm run ebs -- reconcile --json
+npm run ebs -- index rebuild --all --json
+npm run ebs -- build --json
+npm run ebs -- doctor --json
+npm run ebs -- doctor --fix --json
+npm run ebs -- rebuild --json
+
+# Phase 4 autonomous controls
+npm run ebs -- auto status --json
+npm run ebs -- auto pause --json
+npm run ebs -- auto resume --json
+npm run ebs -- auto run-once --dry-run --json
+npm run ebs -- auto candidates --json
+npm run ebs -- auto candidates --status rejected --json
+npm run ebs -- auto retry <candidate-id> --json
+npm run ebs -- scheduler tick --dry-run --json
+```
+
+`rebuild`はreconciliation、全index/MOC再構築、atomic static build、global validationを順に実行する。`generated/`と`dist/`は削除可能な派生成果物であり、`canonical/`と既存記事Markdownから再生成される。
 
 ## ディレクトリ構造
 

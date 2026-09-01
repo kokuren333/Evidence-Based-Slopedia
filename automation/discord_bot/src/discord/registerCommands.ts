@@ -106,6 +106,10 @@ const commands = [
   new SlashCommandBuilder().setName("worker-list").setDescription("Show active article workers."),
   new SlashCommandBuilder().setName("queue-pause").setDescription("Admin-only: pause starting new queued jobs."),
   new SlashCommandBuilder().setName("queue-resume").setDescription("Admin-only: resume starting queued jobs."),
+  new SlashCommandBuilder().setName("auto-status").setDescription("Show autonomous generation status."),
+  new SlashCommandBuilder().setName("auto-pause").setDescription("Admin-only: pause autonomous generation."),
+  new SlashCommandBuilder().setName("auto-resume").setDescription("Admin-only: resume autonomous generation."),
+  new SlashCommandBuilder().setName("auto-run").setDescription("Admin-only: run one autonomous dry-run tick."),
   new SlashCommandBuilder().setName("git-status").setDescription("Show private vault git status."),
   new SlashCommandBuilder()
     .setName("git-debug")

@@ -70,6 +70,8 @@ export async function enqueueDailyForecastJobs(
       query: buildDailyForecastQuery(forecast, date, targetPath),
       mode: "new",
       jobType: "daily_forecast",
+      priority: "P3",
+      idempotencyKey: `forecast:${date}:${forecast.slug}`,
       discordUserId: input.discordUserId,
       channelId: input.channelId,
       guildId: input.guildId,

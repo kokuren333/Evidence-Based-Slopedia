@@ -9,8 +9,16 @@
 /automation/discord_bot/data/
 /automation/discord_bot/logs/
 /automation/discord_bot/node_modules/
+**/node_modules/
 /automation/discord_bot/.cache/
 /automation/discord_bot/dist/
+
+# EBS canonical state is intentionally trackable; derived output is rebuildable.
+/canonical/.locks/
+/generated/
+/dist/
+/dist.tmp-*/
+/dist.previous/
 
 /10_Published/*.md
 /10_Published/**/*.md
@@ -62,6 +70,9 @@
 /_working/**/*
 !/_working/**/
 !/_working/**/.gitkeep
+
+# Local backup snapshots may contain private Vault history and are not source.
+/backups/
 
 /_archive/superseded_articles/*
 !/_archive/superseded_articles/.gitkeep

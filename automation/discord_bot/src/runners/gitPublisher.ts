@@ -3,6 +3,7 @@ import type { Job } from "../types.js";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { quoteForShell, requireOk, runCommand, runGit } from "../utils/shell.js";
+import type { SourceIntegrationPublisher } from "../../../ebs/core/src/ports/sourceIntegrationPublisher.js";
 
 let publishLock: Promise<unknown> = Promise.resolve();
 
@@ -33,6 +34,7 @@ export async function publishWorkerBranch(job: Job): Promise<string> {
     if (!job.branchName) throw new Error("Job is missing branchName");
     if (!job.worktreePath) throw new Error("Job is missing worktreePath");
     await configureGitIdentity(config.paths.vaultRoot);
+    await commitPendingCanonicalManagementState();
     await assertMainWorktreeClean();
 
     await requireOk(await runGit(config.paths.vaultRoot, ["checkout", config.git.branch]), "git checkout main branch");
@@ -59,6 +61,15 @@ export async function publishWorkerBranch(job: Job): Promise<string> {
     return rev.stdout.trim();
   });
 }
+
+export async function publishCanonicalManagementState(): Promise<string> {
+  return withPublishLock(async () => { await configureGitIdentity(config.paths.vaultRoot); await commitPendingCanonicalManagementState(); await assertMainWorktreeClean(); await requireOk(await runGit(config.paths.vaultRoot, ["pull", "--rebase", config.git.remote, config.git.branch], 240_000), "git pull canonical state"); await requireOk(await runGit(config.paths.vaultRoot, ["push", config.git.remote, config.git.branch], 300_000), "git push canonical state"); const rev = await runGit(config.paths.vaultRoot, ["rev-parse", "HEAD"]); await requireOk(rev, "git rev-parse canonical state"); return rev.stdout.trim(); });
+}
+
+export const gitSourceIntegrationPublisher: SourceIntegrationPublisher<Job> = {
+  commit: commitWorkerChanges,
+  publish: publishWorkerBranch,
+};
 
 async function rebaseWorkerBranchForPublish(job: Job): Promise<void> {
   if (!job.worktreePath) throw new Error("Job is missing worktreePath");
@@ -186,6 +197,12 @@ async function assertMainWorktreeClean(): Promise<void> {
     throw new Error(`Main vault worktree must be clean before publishing worker branches:\n${status.stdout}`);
   }
 }
+
+async function commitPendingCanonicalManagementState(): Promise<void> {
+  const status = await runGit(config.paths.vaultRoot, ["-c", "core.quotepath=false", "status", "--porcelain=v1", "-z", "--untracked-files=all"]); await requireOk(status, "git status canonical state"); const changed = parsePorcelainStatusPaths(status.stdout); if (!changed.length) return; const nonCanonical = changed.filter((file) => !isCanonicalManagementPath(file)); if (nonCanonical.length) throw new Error(`Main vault worktree must be clean before publishing worker branches:\n${nonCanonical.join("\n")}`); await requireOk(await runGit(config.paths.vaultRoot, ["add", "--", "canonical"]), "git add canonical management state"); const staged = await runGit(config.paths.vaultRoot, ["diff", "--cached", "--quiet"]); if (staged.code !== 0) await requireOk(await runGit(config.paths.vaultRoot, ["commit", "-m", "Update EBS canonical management state"], 180_000), "git commit canonical management state");
+}
+
+function isCanonicalManagementPath(file: string): boolean { const normalized = file.replace(/\\/g, "/").replace(/^"|"$/g, ""); return ["canonical/metadata/", "canonical/revisions/", "canonical/events/"].some((prefix) => normalized.startsWith(prefix)); }
 
 async function assertNoForbiddenPaths(cwd: string): Promise<void> {
   const status = await runGit(cwd, [

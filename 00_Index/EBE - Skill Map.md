@@ -1,4 +1,4 @@
-﻿---
+---
 project: "Evidence Based Everything"
 type: "guide"
 status: "published"

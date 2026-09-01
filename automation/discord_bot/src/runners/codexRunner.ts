@@ -4,6 +4,7 @@ import { config } from "../config.js";
 import type { Job } from "../types.js";
 import { quoteForShell, runCommand } from "../utils/shell.js";
 import { assertMocIntegrity } from "./mocIntegrityChecker.js";
+import type { ContentExecutor } from "../../../ebs/core/src/ports/contentExecutor.js";
 
 export async function runCodexForJob(job: Job, signal?: AbortSignal): Promise<void> {
   if (job.jobType === "codex") {
@@ -68,6 +69,10 @@ export async function runCodexForRootQuery(job: Job, signal?: AbortSignal): Prom
 
   await assertMocIntegrity(cwd);
 }
+
+export const codexContentExecutor: ContentExecutor<Job> = {
+  execute: runCodexForJob,
+};
 
 function buildPrompt(job: Job): string {
   if (job.jobType === "codex") {

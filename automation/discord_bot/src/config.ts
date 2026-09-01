@@ -65,7 +65,7 @@ export const config = {
     logDir: resolveBotPath(env("EBE_BOT_LOG_DIR", "logs")),
   },
   workers: {
-    maxWorkers: Math.max(1, intEnv("EBE_MAX_WORKERS", 4)),
+    maxWorkers: Math.max(1, intEnv("EBE_MAX_WORKERS", 1)),
     maxPublishers: Math.max(1, intEnv("EBE_MAX_PUBLISHERS", 1)),
     keepFailedWorktrees: boolEnv("EBE_KEEP_FAILED_WORKTREES", true),
     keepSuccessfulWorktrees: boolEnv("EBE_KEEP_SUCCESSFUL_WORKTREES", false),
@@ -101,5 +101,14 @@ export const config = {
     channelId: env("DISCORD_DAILY_FORECAST_CHANNEL_ID", env("DISCORD_DAILY_NEWS_CHANNEL_ID", "")),
     hourJst: intEnv("EBE_DAILY_FORECAST_HOUR_JST", 7),
     minuteJst: intEnv("EBE_DAILY_FORECAST_MINUTE_JST", 0),
+  },
+  backup: {
+    enabled: boolEnv("EBS_BACKUP_ENABLED", true),
+    hourJst: intEnv("EBS_BACKUP_HOUR_JST", 3),
+    minuteJst: intEnv("EBS_BACKUP_MINUTE_JST", 30),
+    retention: { daily: intEnv("EBS_BACKUP_RETENTION_DAILY", 7), weekly: intEnv("EBS_BACKUP_RETENTION_WEEKLY", 4), monthly: intEnv("EBS_BACKUP_RETENTION_MONTHLY", 3) },
+  },
+  autoGeneration: {
+    enabled: boolEnv("EBS_AUTO_ENABLED", true), minIntervalMinutes: intEnv("EBS_AUTO_MIN_INTERVAL_MINUTES", 5), maxIntervalMinutes: intEnv("EBS_AUTO_MAX_INTERVAL_MINUTES", 10), maxPerHour: intEnv("EBS_AUTO_MAX_PER_HOUR", 6), maxPerDay: intEnv("EBS_AUTO_MAX_PER_DAY", 50),
   },
 };
