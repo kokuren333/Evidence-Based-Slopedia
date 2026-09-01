@@ -1,18 +1,18 @@
 ﻿# Evidence Based Slopedia
 
-Evidence Based Slopedia（EBS）は、あらゆる問いをEvidence-Basedに扱い、Obsidian Vault上でpublish-readyな知識記事を継続的に編纂するための百科事典システムである。
+Evidence Based Slopedia（EBS）は、Evidence-Basedで高品質な「AI slop」を量産する、半分ネタで半分本気の知識サイト／編纂システムである。雑に大量生成するのではなく、ソース、引用、反証、限界、更新履歴を通して、読める・検証できる記事へ仕上げる。
 
-このディレクトリは、単なるMarkdown置き場ではなく、Obsidian Vault、Evidence管理領域、MOC、設定ファイル、Codex SkillsオーケストレーションをまとめたEBEの運用ルートである。
+このリポジトリは、記事の原稿・Evidence・自動生成パイプライン・Discord Bot・静的サイトビルドをまとめたEBSの運用ルートである。Obsidianは編集・監査用のバックエンドとして利用できるが、最終的な読者向け成果物は静的サイトとして`dist/`に生成される。
 
 ## 目的
 
-EBEの目的は、ユーザーが与える問いに対して、ソースに基づいた、読み応えのある、更新可能なObsidian向けpublish-ready Markdown記事を作り続けることである。
+EBSの目的は、ユーザーが与えた問いを起点に、ソースに基づいた、読み応えがあり、更新可能で、必要なら笑えるpublish-ready記事を継続的に作ることである。
 
 publish記事は、教科書的・参考書的・レビュー的であり、歴史的背景、現代の標準的理解、実践・応用・限界・論争点、番号付き引用、URL付き参考ソース、日本語インフォグラフィック、更新履歴、更新日付を備える。
 
 ## 自走ワークフロー
 
-このVaultでEBE関連タスクを依頼されたCodexは、通常の途中許可を求めず、`.agents/skills/` の定義に従って完了まで自走する。安全性、合法性、プライバシー、破壊的ファイル操作、重大な範囲不明だけは確認対象とする。
+EBS関連タスクを実行するCodexは、`.agents/skills/`の定義に従って、調査・執筆・監査・公開準備まで自走する。安全性、合法性、プライバシー、破壊的ファイル操作、重大な範囲不明だけは確認対象とする。
 
 ## ディレクトリ構造
 
@@ -66,14 +66,15 @@ EBEの成果物はライフサイクルで分ける。`_working/` は未公開�
 
 ## Discord Bot Automation
 
-このリポジトリには、DiscordのSlash CommandからEBE記事生成・一括記事生成・Vault管理用Codex実行を依頼するためのBot実装が含まれている。
+このリポジトリには、DiscordのSlash CommandからEBS記事生成・一括記事生成・運用コマンドを実行するBot実装が含まれている。
 
 ```text
 Discord /article
   -> Botがjobをqueueへ登録
-  -> Codexが隔離されたGit worktreeでEBE workflowを実行
-  -> 成功したjobだけprivate vault repoへmerge/commit/push
-  -> GitHub Actionsがpublic mirrorを更新
+  -> Codexが隔離されたGit worktreeでEBS workflowを実行
+  -> Publish Gateを通過したjobだけmainへmerge/commit/push
+  -> static buildでdist/を生成
+  -> GitHub Pages等の静的ホスティングへdeploy
 ```
 
 主なコマンドは次の通り。
@@ -91,17 +92,37 @@ Bot本体は `automation/discord_bot/` にある。詳しいセットアップ�
 
 `10_Published/` は公開可能な最終記事だけを置く領域である。公開に向かない記事、個人プロフィール性が強い記事、ギャンブル・投機・センシティブテーマの記事は、必要に応じて削除または非公開領域へ退避し、MOC・証跡・画像・ログも整合するように更新する。
 
-### 公開Mirrorの考え方
+### 静的サイトとして公開する
 
-このリポジトリは、private vault sourceとpublic mirrorを分ける前提で設計されている。
+EBSの読者向けサイトは、MarkdownやVaultを直接配信せず、ビルドで生成した`dist/`を静的ホスティングへ配置する。
 
-- private repository: 記事、証跡、画像、ログを含む実運用Vault。
-- public repository: Skills、設定、ポリシー、空のVault構造、Botソースなど公開可能な部分だけ。
+```powershell
+cd automation/discord_bot
+npm run ebs -- rebuild --json
+```
+
+`dist/`にはトップページ、記事ページ、検索用JSON、RSS、sitemap、CSSなどの配信可能なファイルが生成される。GitHub Pages、Cloudflare Pages、Netlify、Vercelなど、静的ファイルを配信できるサービスを想定する。
+
+GitHub Pagesへ手動配置する場合は、Pages用リポジトリを別ディレクトリにcloneし、`.env`で`EBS_GITHUB_PAGES_DIR`を指定してから実行する。
+
+```powershell
+npm run ebs -- deploy --dry-run --json
+npm run ebs -- deploy --json
+cd $env:EBS_GITHUB_PAGES_DIR
+git add -A
+git commit -m "Deploy EBS site"
+git push
+```
+
+本リポジトリには現在、GitHub Actionsによる自動Pagesデプロイは含まれていない。自動化する場合は、生成物専用のPagesリポジトリまたはPages用ブランチへdeployするWorkflowを別途追加する。
+
+### ソースと公開物の分離
+
+- source repository: 記事原稿、Evidence、Bot、設定、生成コードを管理する。
+- static site: `dist/`だけをホスティングへ渡す。
 - secrets: GitHub Secrets、`.env`、ローカル認証情報として管理し、Gitに入れない。
 
-public mirrorは `.github/workflows/sync-public-mirror.yml` のallowlistで作られる。記事本文やprivate artifactsをpublicに出したくない場合は、workflowのallowlistに含めない。
-
-### 公開記事リポジトリ
+### 公開記事リポジトリ（任意）
 
 ひな形公開用のpublic mirrorとは別に、公開記事だけを蓄積するpublic repositoryも用意できる。これは `.github/workflows/sync-public-articles.yml` で同期する。
 
