@@ -10,6 +10,7 @@ import { IndexService } from "../../ebs/core/src/services/indexService.js";
 import { ImageService } from "../../ebs/core/src/services/imageService.js";
 import { BackupService } from "../../ebs/core/src/services/backupService.js";
 import { DeployService, DirectoryDeploymentTarget } from "../../ebs/core/src/services/deployService.js";
+import { createGitFixture, git } from "./gitFixture.js";
 
 test("public URL service separates Windows paths, Japanese URL encoding, and base paths", () => {
   const urls = new PublicUrlService({ basePath: "/ebs/", origin: "https://example.test" });
@@ -33,6 +34,17 @@ test("image migration converts PNG atomically to canonical WebP and removes orig
 test("directory deployment is atomic/no-op aware and backups verify/stage without overwriting canonical state", async () => {
   const { root, repository, seed } = await phase3Fixture(); await seed("art_DEPLOY", "Deploy", "science/deploy", "published"); const indexes = new IndexService(root, repository); await indexes.rebuildAll(); await new BuildService(root, repository, indexes).build(); const deployed = path.join(root, "host"); const deploy = new DeployService(root, new DirectoryDeploymentTarget(deployed)); const first = await deploy.deploy(); assert.equal(first.result, "succeeded"); assert.ok(await fs.stat(path.join(deployed, "index.html"))); const second = await deploy.deploy(); assert.match(second.error ?? "", /no-op/);
   const backup = new BackupService(root); const manifest = await backup.create(); assert.equal((await backup.verify(manifest.id)).valid, true); const staged = await backup.stageRestore(manifest.id); assert.ok(await fs.stat(path.join(staged, "manifest.json"))); assert.ok(await repository.getById("art_DEPLOY"));
+});
+
+test("GitHub Pages directory deploy commits and pushes only when changed", async () => {
+  const fixture = await createGitFixture("ebs-pages-"); const dist = path.join(fixture.root, "dist"); await fs.mkdir(path.join(dist, "assets"), { recursive: true }); await fs.writeFile(path.join(dist, "index.html"), "new site\n");
+  const target = new DirectoryDeploymentTarget(fixture.vault); const changed = await target.deploy(dist, "hash-1"); assert.match(changed.message, /pushed origin\/main/); assert.equal(await git(fixture.vault, "status", "--porcelain"), ""); assert.match(await fs.readFile(path.join(fixture.seed, "README.md"), "utf8"), /fixture/);
+  const unchanged = await target.deploy(dist, "hash-1"); assert.match(unchanged.message, /no Pages repository changes/); assert.equal(await fs.stat(path.join(fixture.vault, ".git")) !== undefined, true);
+});
+
+test("GitHub Pages deploy reports push failure", async () => {
+  const fixture = await createGitFixture("ebs-pages-fail-"); const dist = path.join(fixture.root, "dist"); await fs.mkdir(dist); await fs.writeFile(path.join(dist, "index.html"), "site\n"); await git(fixture.vault, "remote", "set-url", "origin", path.join(fixture.root, "missing.git"));
+  await assert.rejects(() => new DirectoryDeploymentTarget(fixture.vault).deploy(dist, "hash-fail"), /Pages git push origin main failed/); assert.ok(await fs.stat(path.join(fixture.vault, ".git")));
 });
 
 test("backup retention preserves daily, weekly, and monthly recovery points", async () => {
