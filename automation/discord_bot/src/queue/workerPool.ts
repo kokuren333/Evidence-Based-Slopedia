@@ -18,6 +18,7 @@ import { runGit } from "../utils/shell.js";
 import { CandidateRegistry } from "../../../ebs/core/src/services/candidateRegistry.js";
 import { IndexService } from "../../../ebs/core/src/services/indexService.js";
 import { BuildService } from "../../../ebs/core/src/services/buildService.js";
+import { ImageService } from "../../../ebs/core/src/services/imageService.js";
 
 export class WorkerPool {
   private timer: NodeJS.Timeout | undefined;
@@ -141,11 +142,13 @@ export class WorkerPool {
           const sourcePath = await this.resolveCompletedArticlePath(job, pushedCommitSha);
           const reconciliation = await new ReconciliationService(config.paths.vaultRoot, new FilesystemArticleRepository(config.paths.vaultRoot), this.store).reconcileJob(job, sourcePath);
           if (reconciliation?.reviewRequired) throw new Error(`Article reconciliation review required: ${reconciliation.message}`);
+          const imageRepository = new FilesystemArticleRepository(config.paths.vaultRoot); const images = new ImageService(config.paths.vaultRoot, imageRepository); await images.migrate(false);
+          const indexService = new IndexService(config.paths.vaultRoot, imageRepository); await indexService.rebuildAll(); await new BuildService(config.paths.vaultRoot, imageRepository, indexService).build();
           const canonicalSha = await publishCanonicalManagementState(); job = await this.store.update(job.id, { pushedCommitSha: canonicalSha, resultSummary: `Published article at ${pushedCommitSha}; canonical reconciliation at ${canonicalSha}.` });
           const reconciledArticle = await new FilesystemArticleRepository(config.paths.vaultRoot).getById(articleId);
           if (reconciledArticle?.autonomous?.candidateId) {
             await new CandidateRegistry(path.join(config.paths.vaultRoot, "canonical", "autonomous", "registry.json")).update(reconciledArticle.autonomous.candidateId, { status: "generated", articleId: reconciledArticle.id, jobId: job.id, lastAttemptAt: new Date().toISOString() });
-            const indexService = new IndexService(config.paths.vaultRoot, new FilesystemArticleRepository(config.paths.vaultRoot)); await indexService.rebuildAll(); await new BuildService(config.paths.vaultRoot, new FilesystemArticleRepository(config.paths.vaultRoot), indexService).build();
+            // The canonical image/index/build pipeline above also covers autonomous articles.
           }
         }
 

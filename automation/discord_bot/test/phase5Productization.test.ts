@@ -25,9 +25,9 @@ test("Phase 5 build creates portable portal pages, topic routes, crawl-safe asse
   assert.ok(tree["articles/技術・AI/gpu/index.html"]); assert.ok(tree["topics/技術・AI/index.html"]); assert.match(tree["index.html"], /\/ebs\/articles\//); assert.match(tree["articles/技術・AI/gpu/index.html"], /class="toc"/); assert.match(tree["articles/技術・AI/gpu/index.html"], /summary-card/); assert.match(tree["assets/ebs.css"], /clip:rect\(0,0,0,0\)/); assert.match(tree["assets/ebs.css"], /overflow-wrap:anywhere/); assert.doesNotMatch(Object.values(tree).join("\n"), /source_path|worktree|canonical\//i);
 });
 
-test("image migration converts PNG atomically to canonical WebP and preserves original", async () => {
+test("image migration converts PNG atomically to canonical WebP and removes original", async () => {
   const { root, repository, seed } = await phase3Fixture(); const article = await seed("art_IMAGE", "Image", "science/image", "published"); const original = path.join(root, "50_Assets", "Infographics", "image.png"); await fs.mkdir(path.dirname(original), { recursive: true }); await sharp({ create: { width: 1200, height: 675, channels: 3, background: "#135" } }).png().toFile(original);
-  const service = new ImageService(root, repository); const result = await service.migrate(false); assert.equal(result[0].status, "migrated"); assert.ok(await fs.stat(original)); const refreshed = await repository.getById(article.id); assert.match(refreshed!.image!.path, /\.webp$/); assert.ok(await fs.stat(path.join(root, refreshed!.image!.path))); assert.equal((await service.inspect(refreshed!.image!)).issue, undefined);
+  const service = new ImageService(root, repository); const result = await service.migrate(false); assert.equal(result[0].status, "migrated"); await assert.rejects(() => fs.stat(original)); const refreshed = await repository.getById(article.id); assert.match(refreshed!.image!.path, /\.webp$/); assert.ok(await fs.stat(path.join(root, refreshed!.image!.path))); assert.equal((await service.inspect(refreshed!.image!)).issue, undefined);
 });
 
 test("directory deployment is atomic/no-op aware and backups verify/stage without overwriting canonical state", async () => {
