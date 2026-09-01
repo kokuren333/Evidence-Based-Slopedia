@@ -1,6 +1,6 @@
-﻿# Evidence Based Everything
+﻿# Evidence Based Slopedia
 
-Evidence Based Everything（EBE）は、あらゆる問いをEvidence-Basedに扱い、Obsidian Vault上でpublish-readyな知識記事を継続的に編纂するためのシステムである。
+Evidence Based Slopedia（EBS）は、あらゆる問いをEvidence-Basedに扱い、Obsidian Vault上でpublish-readyな知識記事を継続的に編纂するための百科事典システムである。
 
 このディレクトリは、単なるMarkdown置き場ではなく、Obsidian Vault、Evidence管理領域、MOC、設定ファイル、Codex SkillsオーケストレーションをまとめたEBEの運用ルートである。
 

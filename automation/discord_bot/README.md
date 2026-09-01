@@ -1,14 +1,14 @@
-# EBE Discord Bot
+# EBS Discord Bot
 
-Evidence Based Everything（EBE）VaultをDiscordから操作するためのBotである。DiscordのSlash Commandから記事生成、複数記事の一括キュー投入、日次ニュース作成、MOC整備、Git状態確認、VaultルートでのCodex実行を行える。
+Evidence Based Slopedia（EBS）をDiscordから操作するためのBotである。DiscordのSlash Commandから記事生成、複数記事の一括キュー投入、日次ニュース作成、MOC整備、Git状態確認、VaultルートでのCodex実行を行える。
 
 ## できること
 
 ```text
 Discord command
   -> Botがjobをqueueへ登録
-  -> Codex CLIがEBE workflowを実行
-  -> 成功した記事jobだけをprivate vault repositoryへmerge/push
+  -> Codex CLIがEBS workflowを実行
+  -> 成功した記事jobだけをEBS repositoryへmerge/push
   -> Discordへ開始・成功・失敗を通知
 ```
 
@@ -281,7 +281,7 @@ Vaultルートで自由にCodexを実行する例:
 /article
   -> queued
   -> workerが外部Git worktreeを作成
-  -> CodexがEBE workflowを実行
+  -> CodexがEBS workflowを実行
   -> durable artifactsがあればworker branchへcommit
   -> publisherがmainへrebase
   -> MOC conflictは修復処理
