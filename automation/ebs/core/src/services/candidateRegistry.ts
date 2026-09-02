@@ -4,13 +4,13 @@ import { randomUUID } from "node:crypto";
 import { FilesystemMutationLock } from "../infrastructure/filesystemMutationLock.js";
 
 export type CandidateStatus = "candidate" | "accepted" | "queued" | "generating" | "generated" | "duplicate" | "rejected" | "failed" | "cooldown";
-export type TopicSourceType = "existing_article" | "wikipedia_random" | "maintenance";
+export type TopicSourceType = "existing_article" | "wikipedia_random" | "news" | "maintenance";
 
 export interface TopicCandidate {
   id: string; rawTopic: string; normalizedTopic: string; preferredTitle: string; aliases: string[];
   sourceType: TopicSourceType; sourceReference?: string; discoveredAt: string; status: CandidateStatus;
   attemptCount: number; lastAttemptAt?: string; cooldownUntil?: string; articleId?: string; jobId?: string;
-  rejectionReason?: string; similarityTarget?: string; similarityScore?: number; proposedCategory?: string;
+  rejectionReason?: string; similarityTarget?: string; similarityScore?: number; proposedCategory?: string; researchQuestion?: string;
 }
 export interface SchedulerTick { id: string; scheduledAt: string; startedAt: string; completedAt?: string; result?: string; }
 export interface AutoState { enabled: boolean; manualPaused: boolean; lastTickAt?: string; nextTickAt?: string; pauseReasons: string[]; circuitOpenUntil?: string; }

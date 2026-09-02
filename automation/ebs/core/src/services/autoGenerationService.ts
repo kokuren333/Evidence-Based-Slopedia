@@ -4,7 +4,7 @@ import type { JobRepository } from "../ports/jobRepository.js";
 import type { ResourceGuard } from "../ports/resourceGuard.js";
 import { ContentService } from "./contentService.js";
 import { CandidateRegistry, type TopicCandidate } from "./candidateRegistry.js";
-import { TopicDiscoveryService } from "./topicDiscoveryService.js";
+import { EBS_NEWS_CATEGORIES, TopicDiscoveryService } from "./topicDiscoveryService.js";
 
 export interface AutoGenerationConfig { maxPerHour: number; maxPerDay: number; cooldownMinutes: number[]; circuitWindow: number; circuitMaxFailures: number; circuitCooldownMinutes: number; languages: string[]; }
 export interface AutoRunResult { status: "queued" | "dry_run" | "skipped"; reason?: string; candidate?: TopicCandidate; jobId?: string; }
@@ -20,7 +20,11 @@ export class AutoGenerationService {
     const admission = await this.admit(); if (admission) return { status: "skipped", reason: admission };
     let candidates = await this.discovery.fromExisting();
     let candidate = candidates.find((item) => item.status === "accepted");
-    if (!candidate) try { const wikipedia = await this.discovery.fromWikipedia(this.config.languages); if (wikipedia.status === "accepted") candidate = wikipedia; } catch { candidates = await this.discovery.fromExisting(); candidate = candidates.find((item) => item.status === "accepted"); }
+    if (!candidate) {
+      const newsFirst = Math.random() < 0.5;
+      try { candidate = newsFirst ? await this.discovery.fromNews(EBS_NEWS_CATEGORIES) : await this.discovery.fromWikipedia(this.config.languages); } catch { candidate = undefined; }
+      if (!candidate) try { candidate = newsFirst ? await this.discovery.fromWikipedia(this.config.languages) : await this.discovery.fromNews(EBS_NEWS_CATEGORIES); } catch { candidate = undefined; }
+    }
     if (!candidate) return { status: "skipped", reason: "no_acceptable_candidate" };
     if (dryRun) return { status: "dry_run", candidate };
     await this.registry.update(candidate.id, { status: "accepted", attemptCount: candidate.attemptCount + 1, lastAttemptAt: new Date().toISOString() });
@@ -40,7 +44,7 @@ export class AutoGenerationService {
     const recent = candidates.filter((item) => item.lastAttemptAt).sort((a, b) => b.lastAttemptAt!.localeCompare(a.lastAttemptAt!)).slice(0, this.config.circuitWindow); if (recent.filter((item) => ["failed", "cooldown"].includes(item.status)).length >= this.config.circuitMaxFailures) return "high_failure_rate";
     return undefined;
   }
-  private prompt(candidate: TopicCandidate): string { return [`Create a new Evidence Based Slopedia article about: ${candidate.preferredTitle}`, `Private candidate ID: ${candidate.id}`, `Topic source: ${candidate.sourceType}`, `Seed reference: ${candidate.sourceReference ?? "none"}`, "Use the normal EBE evidence-first workflow and every existing publish/quality gate.", "The seed is for topic discovery only. Independently discover and appraise authoritative evidence; do not transform or rely solely on Wikipedia."].join("\n"); }
+  private prompt(candidate: TopicCandidate): string { return [`Create a new Evidence Based Slopedia article about: ${candidate.preferredTitle}`, `Research question: ${candidate.researchQuestion ?? `What is known about ${candidate.preferredTitle}, and what are its limitations?`}`, `Private candidate ID: ${candidate.id}`, `Topic source: ${candidate.sourceType}`, `Seed reference: ${candidate.sourceReference ?? "none"}`, "Use the normal EBE evidence-first workflow and every existing publish/quality gate.", "The seed is for topic discovery only. Independently discover and appraise authoritative evidence; do not transform or rely solely on the seed source."].join("\n"); }
 }
 
 function priorityCounts(jobs: Job[]) { const counts = { P0: 0, P1: 0, P2: 0, P3: 0, P4: 0 }; for (const job of jobs.filter((item) => item.status === "queued")) counts[job.priority ?? "P1"] += 1; return counts; }

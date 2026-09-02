@@ -11,7 +11,7 @@ import { createEbsApplication } from "../../ebs/core/src/application.js";
 import { FilesystemArticleRepository } from "../../ebs/core/src/infrastructure/filesystemArticleRepository.js";
 import { ReconciliationService } from "../../ebs/core/src/services/reconciliationService.js";
 import { CandidateRegistry } from "../../ebs/core/src/services/candidateRegistry.js";
-import { HttpWikipediaClient, TopicDiscoveryService } from "../../ebs/core/src/services/topicDiscoveryService.js";
+import { GoogleNewsRssClient, HttpWikipediaClient, TopicDiscoveryService } from "../../ebs/core/src/services/topicDiscoveryService.js";
 import { AutoGenerationService } from "../../ebs/core/src/services/autoGenerationService.js";
 import { SchedulerService } from "../../ebs/core/src/services/schedulerService.js";
 import { FilesystemMutationLock } from "../../ebs/core/src/infrastructure/filesystemMutationLock.js";
@@ -34,7 +34,7 @@ const autoGenerator: ArticleGenerator = { generate: async (request) => { const j
 // artifact produced by article workers and must never be written by the bot
 // process while the main checkout is being used for publication.
 const candidateRegistry = new CandidateRegistry(path.join(config.paths.runtimeDir, "autonomous", "registry.json"));
-const autoService = new AutoGenerationService(store, candidateRegistry, new TopicDiscoveryService(articleRepository, candidateRegistry, new HttpWikipediaClient()), new ContentService(config.paths.vaultRoot, articleRepository, autoGenerator), createResourceGuard(), { maxPerHour: config.autoGeneration.maxPerHour, maxPerDay: config.autoGeneration.maxPerDay, cooldownMinutes: [60, 360, 1440, 10080], circuitWindow: 10, circuitMaxFailures: 5, circuitCooldownMinutes: 60, languages: ["ja", "en"] });
+const autoService = new AutoGenerationService(store, candidateRegistry, new TopicDiscoveryService(articleRepository, candidateRegistry, new HttpWikipediaClient(), undefined, undefined, undefined, new GoogleNewsRssClient()), new ContentService(config.paths.vaultRoot, articleRepository, autoGenerator), createResourceGuard(), { maxPerHour: config.autoGeneration.maxPerHour, maxPerDay: config.autoGeneration.maxPerDay, cooldownMinutes: [60, 360, 1440, 10080], circuitWindow: 10, circuitMaxFailures: 5, circuitCooldownMinutes: 60, languages: ["ja", "en"] });
 const scheduler = new SchedulerService(autoService, candidateRegistry, new FilesystemMutationLock(config.paths.vaultRoot), { minIntervalMinutes: config.autoGeneration.minIntervalMinutes, maxIntervalMinutes: Math.max(config.autoGeneration.minIntervalMinutes, config.autoGeneration.maxIntervalMinutes) });
 const backupService = new BackupService(config.paths.vaultRoot);
 const recovered = await store.recoverInterruptedJobs();
