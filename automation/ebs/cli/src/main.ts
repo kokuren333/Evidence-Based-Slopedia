@@ -1,5 +1,9 @@
 import path from "node:path";
+import fs from "node:fs";
 import { pathToFileURL } from "node:url";
+loadDotEnv(path.resolve(process.cwd(), ".env"));
+
+function loadDotEnv(file: string) { if (!fs.existsSync(file)) return; for (const line of fs.readFileSync(file, "utf8").split(/\r?\n/)) { const match = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)\s*$/); if (match && process.env[match[1]] === undefined) process.env[match[1]] = match[2].replace(/^['"]|['"]$/g, ""); } }
 import { JsonJobRepository } from "../../core/src/infrastructure/jsonJobRepository.js";
 import { JobNotFoundError, JobService } from "../../core/src/services/jobService.js";
 import type { CreateJobInput, Job } from "../../core/src/domain/job.js";

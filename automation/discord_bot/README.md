@@ -227,6 +227,8 @@ EBS_PAGES_GIT_BRANCH=main
 EBS_PAGES_GIT_COMMIT_MESSAGE=deploy: update site
 EBS_PAGES_GIT_USER_NAME=ebs-pages-deployer
 EBS_PAGES_GIT_USER_EMAIL=ebs-pages-deployer@example.invalid
+EBS_SITE_BASE_PATH=/Evidence-Based-Slopedia-Pages/
+EBS_SITE_ORIGIN=https://kokuren333.github.io
 ```
 
 `EBE_VAULT_ROOT` はこのVaultの絶対パス。`EBE_WORKTREE_ROOT` はworker用の外部ディレクトリ。
