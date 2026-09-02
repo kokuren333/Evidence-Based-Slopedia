@@ -166,7 +166,7 @@ export class WorkerPool {
           const repository = new FilesystemArticleRepository(config.paths.vaultRoot, { eventsFile: config.paths.managementEventsFile });
           const indexes = new IndexService(config.paths.vaultRoot, repository);
           await indexes.rebuildAll();
-          await new BuildService(config.paths.vaultRoot, repository, indexes).build();
+          await new BuildService(config.paths.vaultRoot, repository, indexes, { basePath: process.env.EBS_SITE_BASE_PATH ?? "/", origin: process.env.EBS_SITE_ORIGIN }).build();
           const deployment = new DeployService(config.paths.vaultRoot, new GitHubPagesDeploymentTarget(path.resolve(pagesDirectory)), config.paths.runtimeDir);
           const result = await deployment.deploy(false);
           if (result.result !== "succeeded") throw new Error(`Site deployment failed${result.error ? `: ${result.error}` : "."}`);

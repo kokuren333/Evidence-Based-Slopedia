@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import dotenv from "dotenv";
 import { randomUUID } from "node:crypto";
 import { FilesystemArticleRepository } from "../../ebs/core/src/infrastructure/filesystemArticleRepository.js";
 import { generateArticleId } from "../../ebs/core/src/services/contentService.js";
@@ -8,6 +9,8 @@ import { collectPublicArticles } from "../../ebs/core/src/services/publicationPo
 import { IndexService } from "../../ebs/core/src/services/indexService.js";
 import { BuildService } from "../../ebs/core/src/services/buildService.js";
 import { DeployService, GitHubPagesDeploymentTarget } from "../../ebs/core/src/services/deployService.js";
+
+dotenv.config({ path: path.join(process.cwd(), ".env") });
 
 const root = path.resolve(process.env.EBE_VAULT_ROOT ?? path.resolve(process.cwd(), "../.."));
 const repository = new FilesystemArticleRepository(root);
