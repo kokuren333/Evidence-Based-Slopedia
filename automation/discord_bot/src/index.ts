@@ -38,7 +38,9 @@ const recovered = await store.recoverInterruptedJobs();
 if (recovered.length > 0) {
   console.warn(`Recovered ${recovered.length} interrupted jobs as failed_review_required.`);
 }
-const reconciliation = await new ReconciliationService(config.paths.vaultRoot, articleRepository, store).reconcileAll(true);
+// Startup inspection must not repair the main checkout. Repairs belong to the
+// worker branch that owns the job, otherwise recovery itself makes main dirty.
+const reconciliation = await new ReconciliationService(config.paths.vaultRoot, articleRepository, store).reconcileAll(false);
 if (reconciliation.reviewRequired > 0) console.warn(`EBS reconciliation requires review for ${reconciliation.reviewRequired} finding(s).`);
 
 let workerPool: WorkerPool;

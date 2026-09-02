@@ -49,6 +49,15 @@ test("main canonical dirt is rejected instead of being auto-committed", async ()
   const job = await makeJob("canonical-state", "canonical-state.txt"); const commit = await commitWorkerChanges(job); const metadata = path.join(fixture.vault, "canonical", "metadata", "articles", "art_TEST.yml"); await fs.mkdir(path.dirname(metadata), { recursive: true }); await fs.writeFile(metadata, "{}\n"); await assert.rejects(publishWorkerBranch({ ...job, commitSha: commit }), /must be clean/); await fs.rm(path.join(fixture.vault, "canonical"), { recursive: true, force: true }); await removeWorktree(job.worktreePath, job.branchName);
 });
 
+test("publish preflight still rejects unrelated main changes", async () => {
+  const job = await makeJob("unrelated-main", "unrelated-main.txt");
+  const commit = await commitWorkerChanges(job);
+  await fs.appendFile(path.join(fixture.vault, "README.md"), "dirty\n", "utf8");
+  await assert.rejects(publishWorkerBranch({ ...job, commitSha: commit }), /must be clean/);
+  await git(fixture.vault, "checkout", "--", "README.md");
+  await removeWorktree(job.worktreePath, job.branchName);
+});
+
 test("single-process publish lock serializes concurrent publications", async () => {
   const first = await makeJob("serial-a", "serial-a.txt");
   const second = await makeJob("serial-b", "serial-b.txt");

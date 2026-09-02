@@ -182,9 +182,25 @@ export class WorkerPool {
         errorMessage: error instanceof Error ? error.message : String(error),
         finishedAt: new Date().toISOString(),
       });
-      if (updated.article) {
-        const articles = new FilesystemArticleRepository(config.paths.vaultRoot); await new ReconciliationService(config.paths.vaultRoot, articles, this.store).reconcileJob(updated).catch(() => undefined);
-        const failedArticle = await articles.getById(updated.article.articleId); if (failedArticle?.autonomous?.candidateId) await new CandidateRegistry(path.join(config.paths.vaultRoot, "canonical", "autonomous", "registry.json")).recordFailure(failedArticle.autonomous.candidateId, [60, 360, 1440, 10080]).catch(() => undefined);
+      // Failure reconciliation is worker-owned state.  Writing it to the vault
+      // checkout here dirties main and makes the publish preflight reject the
+      // next (otherwise unrelated) worker.  If the worker checkout is gone,
+      // the durable job state above is the recovery record; startup recovery is
+      // deliberately read-only (see index.ts).
+      if (updated.article && current.worktreePath) {
+        try {
+          await fs.access(current.worktreePath);
+          const articles = new FilesystemArticleRepository(current.worktreePath);
+          await new ReconciliationService(current.worktreePath, articles, this.store).reconcileJob(updated).catch(() => undefined);
+          const failedArticle = await articles.getById(updated.article.articleId);
+          if (failedArticle?.autonomous?.candidateId) {
+            await new CandidateRegistry(path.join(current.worktreePath, "canonical", "autonomous", "registry.json"))
+              .recordFailure(failedArticle.autonomous.candidateId, [60, 360, 1440, 10080]).catch(() => undefined);
+          }
+        } catch {
+          // Missing worker trees are expected after cleanup; do not fall back
+          // to mutating the main vault.
+        }
       }
       await writeJobLog(initialJob.id, `FAILED\n${updated.errorMessage ?? String(error)}`);
       if (!config.workers.keepFailedWorktrees && current.worktreePath && current.branchName) {
