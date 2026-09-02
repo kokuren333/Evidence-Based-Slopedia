@@ -119,7 +119,10 @@ export class WorkerPool {
               : job.jobType === "daily_forecast"
                 ? "forecasting"
                 : (job.imageMaintenance?.scope ?? "all");
-          await assertArticleImagePaths(job.worktreePath!, scope);
+          const targetArticlePaths = job.jobType === "article" && job.article
+            ? [job.article.sourcePath]
+            : undefined;
+          await assertArticleImagePaths(job.worktreePath!, scope, targetArticlePaths);
         }
         await this.throwIfCancelled(job.id);
         const requiredArtifactPrefix = job.jobType === "daily_news" ? "11_Daily/" : job.jobType === "daily_forecast" ? "12_Forecasting/" : "10_Published/";

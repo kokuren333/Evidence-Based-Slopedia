@@ -16,8 +16,8 @@ interface ImageFinding extends ImageReference {
 
 const imageExtensions = new Set([".avif", ".gif", ".jpeg", ".jpg", ".png", ".svg", ".webp"]);
 
-export async function assertArticleImagePaths(cwd: string, scope: ImagePathScope = "all"): Promise<void> {
-  const findings = await findArticleImagePathFindings(cwd, scope);
+export async function assertArticleImagePaths(cwd: string, scope: ImagePathScope = "all", targetArticlePaths?: string[]): Promise<void> {
+  const findings = await findArticleImagePathFindings(cwd, scope, targetArticlePaths);
   if (findings.length > 0) {
     throw new Error(
       [
@@ -30,7 +30,7 @@ export async function assertArticleImagePaths(cwd: string, scope: ImagePathScope
   }
 }
 
-async function findArticleImagePathFindings(cwd: string, scope: ImagePathScope): Promise<ImageFinding[]> {
+async function findArticleImagePathFindings(cwd: string, scope: ImagePathScope, targetArticlePaths?: string[]): Promise<ImageFinding[]> {
   const articleRoots =
     scope === "published"
       ? ["10_Published"]
@@ -45,7 +45,11 @@ async function findArticleImagePathFindings(cwd: string, scope: ImagePathScope):
   for (const root of articleRoots) {
     const absoluteRoot = path.join(cwd, root);
     if (!(await exists(absoluteRoot))) continue;
-    for (const file of await listMarkdownFiles(absoluteRoot)) {
+    const files = targetArticlePaths?.length
+      ? targetArticlePaths.map((target) => path.resolve(cwd, target.replace(/[\\/]/g, path.sep))).filter((file) => file.startsWith(absoluteRoot))
+      : await listMarkdownFiles(absoluteRoot);
+    for (const file of [...new Set(files)]) {
+      if (!(await exists(file)) || path.extname(file).toLowerCase() !== ".md") continue;
       if (path.basename(file).toLowerCase() === "_moc.md") continue;
       const text = await fs.readFile(file, "utf8");
       const articlePath = toVaultPath(cwd, file);
