@@ -85,6 +85,19 @@ Discord /article
 - `/daily-news`: 管理者専用。日次ニュース記事をまとめてキューに入れる。
 - `/moc-maintenance`: 管理者専用。公開記事や日次記事のMOCを再構成する。
 - `/image_maintenance`: 管理者専用。公開記事や日次記事の画像パスを点検・修復する。記事生成後にも画像パス検査が走り、壊れた画像参照が残るjobはpublishされない。
+- `/job-status job_id:"..."`: jobの状態・worktree・エラー・commitを確認する。
+- `/job-list`: 最新50件までのjobを表示する。
+- `/worker-list`: 実行中workerを表示する。
+- `/job-cancel job_id:"..."`: queued/running jobをキャンセルする。queued jobはworkerに渡らない。
+- `/job-retry job_id:"..."`: failed、failed_review_required、cancelled jobを再キュー投入する。
+- `/job-cleanup older_than_days:7 dry_run:true`: 古い終了済みjobのworktree、runtime log、JobStore履歴を一覧化または削除する。succeeded、failed、failed_review_required、cancelledが対象で、queued/runningは残す。
+- `/queue-pause` / `/queue-resume`: 新しいqueued jobの開始を停止・再開する。
+- `/auto-status`: 自律生成の状態、候補、上限、queueを表示する。
+- `/auto-pause` / `/auto-resume`: 自律生成の定期実行を停止・再開する。
+- `/auto-run`: 管理者専用。自律生成schedulerを1 tickだけdry-run実行する。
+- `/git-status`: Vault repositoryの状態を表示する。
+- `/git-debug action:status|all`: 管理者専用のGit診断・同期コマンド。
+- `/bot-health`: Bot、queue、worker、CPU、memoryの状態を表示する。
 
 Bot本体は `automation/discord_bot/` にある。詳しいセットアップは `automation/discord_bot/README.md` を参照する。
 
@@ -101,7 +114,7 @@ cd automation/discord_bot
 npm run ebs -- rebuild --json
 ```
 
-`dist/`にはトップページ、記事ページ、検索用JSON、RSS、sitemap、CSSなどの配信可能なファイルが生成される。GitHub Pages、Cloudflare Pages、Netlify、Vercelなど、静的ファイルを配信できるサービスを想定する。
+`dist/`にはトップページ、記事ページ、検索用JSON、RSS、sitemap、CSSなどの配信可能なファイルが生成される。公開される画像はWebPに正規化され、原本のPNG/JPEGは公開記事領域に残さない。GitHub Pages、Cloudflare Pages、Netlify、Vercelなど、静的ファイルを配信できるサービスを想定する。
 
 GitHub Pagesへ配置する場合は、Pages用リポジトリを別ディレクトリにcloneし、`.env`で`EBS_GITHUB_PAGES_DIR`を指定する。deploy処理が`dist/`を同期し、Pages用repositoryの差分確認、commit、pushまで行う。
 
@@ -120,28 +133,9 @@ npm run ebs -- deploy --json
 
 ### 公開記事リポジトリ（任意）
 
-ひな形公開用のpublic mirrorとは別に、公開記事だけを蓄積するpublic repositoryも用意できる。これは `.github/workflows/sync-public-articles.yml` で同期する。
+公開記事を蓄積するrepositoryと、ビルド済み静的サイトを配信するPages repositoryは別用途である。Pages repositoryを使う場合は、常駐Botのdeploy処理が`dist/`を同期し、`.git`を保持したまま差分がある場合だけcommit/pushする。GitHub Actionsは必須ではなく、現行のPages deployでは使用しない。
 
-同期対象は次のみに限定する。
-
-- `index.md`
-- `10_Published/`
-- `11_Daily/`
-- `00_Index/EBE - Home.md`
-- `00_Index/EBE - Global MOC.md`
-- `60_MOCs/`
-- `50_Assets/` のうち、公開Markdownから参照されている画像・添付ファイル
-- `LICENSE`
-- 公開記事リポジトリ用に生成される `README.md`
-
-同期しないものは、`_working/`、`20_EvidencePackets/`、`30_Sources/`、`40_Claims/`、`70_Logs/`、Discord Bot実装、private運用設定、認証情報である。
-
-GitHub側では、private repositoryに次を設定する。
-
-- Secret: `PUBLIC_ARTICLES_TOKEN`
-- Variable: `PUBLIC_ARTICLES_REPOSITORY`
-
-`PUBLIC_ARTICLES_REPOSITORY` は `owner/repository` 形式で指定する。例: `kokuren333/Evidence-Based-Everything-Articles`
+記事ソースの管理repository、公開記事repository、ビルド済みPages repositoryを分ける場合は、それぞれの同期処理を混同しないこと。公開用repositoryへは、認証情報や`_working/`、runtime state、ログを含めない。
 
 ### Obsidianで読む
 

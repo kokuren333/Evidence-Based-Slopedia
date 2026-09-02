@@ -57,7 +57,7 @@ Discord command
   - jobの状態、worktree、エラー、commitなどを確認する。
 
 - `/job-list`
-  - 最近のjobを表示する。
+  - 最新50件までのjobを表示する。
 
 - `/job-cancel job_id:"..."`
   - 管理者専用。
@@ -87,7 +87,17 @@ Discord command
 
 - `/job-cleanup older_than_days:7 dry_run:true`
   - 管理者専用。
-  - 古い失敗worktreeを一覧化または削除する。
+  - 古い終了済みjobのworktree、runtime log、JobStore履歴を一覧化または削除する。
+  - 対象は`succeeded`、`failed`、`failed_review_required`、`cancelled`。`queued`と`running`は削除しない。
+
+- `/auto-status`
+  - 自律生成の状態、候補、queue、上限を表示する。
+
+- `/auto-pause` / `/auto-resume`
+  - 自律生成の定期実行を停止・再開する。
+
+- `/auto-run`
+  - 管理者専用。自律生成schedulerを1 tickだけdry-run実行する。
 
 - `/bot-health`
   - キュー、worker、resource guard、CPU、memoryの状態を表示する。
@@ -124,7 +134,7 @@ npm run ebs -- auto retry <candidate-id> --json
 npm run ebs -- scheduler tick --dry-run --json
 ```
 
-`rebuild`はreconciliation、全index/MOC再構築、atomic static build、global validationを順に実行する。`generated/`と`dist/`は削除可能な派生成果物であり、`canonical/`と既存記事Markdownから再生成される。
+`rebuild`はreconciliation、全index/MOC再構築、atomic static build、global validationを順に実行する。公開画像はWebPへ正規化され、公開用`dist/`にPNG/JPEGを残さない。`generated/`と`dist/`は削除可能な派生成果物であり、`canonical/`と既存記事Markdownから再生成される。
 
 ## ディレクトリ構造
 
