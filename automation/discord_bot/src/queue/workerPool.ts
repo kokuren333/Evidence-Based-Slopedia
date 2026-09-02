@@ -21,6 +21,7 @@ import { IndexService } from "../../../ebs/core/src/services/indexService.js";
 import { BuildService } from "../../../ebs/core/src/services/buildService.js";
 import { ImageService } from "../../../ebs/core/src/services/imageService.js";
 import { DeployService, GitHubPagesDeploymentTarget } from "../../../ebs/core/src/services/deployService.js";
+import { ContentService } from "../../../ebs/core/src/services/contentService.js";
 
 export class WorkerPool {
   private timer: NodeJS.Timeout | undefined;
@@ -127,10 +128,18 @@ export class WorkerPool {
 
         if (job.article) {
           const workerArticles = new FilesystemArticleRepository(job.worktreePath!);
-          const reconciliation = await new ReconciliationService(job.worktreePath!, workerArticles, this.store).reconcileJob(job, job.article.sourcePath);
-          if (reconciliation?.reviewRequired) throw new Error(`Article reconciliation review required: ${reconciliation.message}`);
-          await new IndexService(job.worktreePath!, workerArticles).rebuildAll();
+          const completedSourcePath = await this.resolveWorkerArticlePath(job);
+          if (!completedSourcePath) throw new Error("Published article source could not be identified in worker changes.");
+          const operationId = job.article.operationId;
+          if (!operationId) throw new Error(`Article operation ID missing: ${job.article.articleId}`);
+          const content = new ContentService(job.worktreePath!, workerArticles);
+          await content.completeQueuedGeneration(job.article.articleId, job.article.operation, operationId, { actor: "worker", origin: "publish-finalize", jobId: job.id }, completedSourcePath);
           const completed = await workerArticles.getById(job.article.articleId);
+          if (!completed) throw new Error(`Article metadata missing after reconciliation: ${job.article.articleId}`);
+          if (completed.status !== "published") {
+            await content.publish(completed.id, { actor: "worker", origin: "publish-finalize", jobId: job.id });
+          }
+          await new IndexService(job.worktreePath!, workerArticles).rebuildAll();
           if (completed?.autonomous?.candidateId) {
             const workerRegistry = new CandidateRegistry(path.join(job.worktreePath!, "canonical", "autonomous", "registry.json"));
             const controlRegistry = new CandidateRegistry(path.join(config.paths.runtimeDir, "autonomous", "registry.json"));
@@ -147,16 +156,6 @@ export class WorkerPool {
         await this.throwIfCancelled(job.id);
         job = await this.store.update(job.id, { status: "publishing" });
         const pushedCommitSha = await publishWorkerBranch(job);
-        job = await this.store.update(job.id, {
-          status: "succeeded",
-          pushedCommitSha,
-          finishedAt: new Date().toISOString(),
-          resultSummary: "Published to private repository.",
-        });
-        if (job.article) {
-          job = await this.store.update(job.id, { resultSummary: `Published article at ${pushedCommitSha}; canonical worker artifacts included.` });
-        }
-
         if (config.autoDeploy.enabled && ["article", "daily_news", "daily_forecast", "image_maintenance"].includes(job.jobType ?? "article")) {
           const pagesDirectory = process.env.EBS_GITHUB_PAGES_DIR;
           if (!pagesDirectory) throw new Error("Automatic deployment is enabled but EBS_GITHUB_PAGES_DIR is not configured.");
@@ -166,8 +165,11 @@ export class WorkerPool {
           await new BuildService(config.paths.vaultRoot, repository, indexes).build();
           const deployment = new DeployService(config.paths.vaultRoot, new GitHubPagesDeploymentTarget(path.resolve(pagesDirectory)), config.paths.runtimeDir);
           const result = await deployment.deploy(false);
-          job = await this.store.update(job.id, { resultSummary: `${job.resultSummary ?? "Published"} Site deployment: ${result.result}${result.error ? ` (${result.error})` : ""}.` });
+          if (result.result !== "succeeded") throw new Error(`Site deployment failed${result.error ? `: ${result.error}` : "."}`);
         }
+
+        await this.throwIfCancelled(job.id);
+        job = await this.store.update(job.id, { status: "succeeded", pushedCommitSha, finishedAt: new Date().toISOString(), resultSummary: `Published article at ${pushedCommitSha}; rebuild and deployment completed.` });
 
         if (!config.workers.keepSuccessfulWorktrees && job.worktreePath && job.branchName) {
           await removeWorktree(job.worktreePath, job.branchName);
@@ -232,5 +234,14 @@ export class WorkerPool {
     try { await import("node:fs/promises").then((fs) => fs.access(path.join(config.paths.vaultRoot, job.article!.sourcePath))); return job.article.sourcePath; } catch { /* discover newly selected EBE path */ }
     const diff = await runGit(config.paths.vaultRoot, ["diff", "--name-only", `${pushedCommitSha}^1`, pushedCommitSha]);
     if (diff.code !== 0) return undefined; const candidates = diff.stdout.split(/\r?\n/).map((entry) => entry.trim().replace(/\\/g, "/")).filter((entry) => entry.startsWith("10_Published/") && entry.endsWith(".md") && !entry.endsWith("/_MOC.md")); return candidates.length === 1 ? candidates[0] : undefined;
+  }
+
+  private async resolveWorkerArticlePath(job: Job): Promise<string | undefined> {
+    if (!job.worktreePath || !job.article) return undefined;
+    const diff = await runGit(job.worktreePath, ["diff", "--name-only", job.baseCommit, "HEAD"]);
+    if (diff.code !== 0) return undefined;
+    const candidates = diff.stdout.split(/\r?\n/).map((entry) => entry.trim().replace(/\\/g, "/"))
+      .filter((entry) => entry.startsWith("10_Published/") && entry.endsWith(".md") && !entry.endsWith("/_MOC.md"));
+    return candidates.length === 1 ? candidates[0] : (await fs.access(path.join(job.worktreePath, job.article.sourcePath)).then(() => job.article!.sourcePath).catch(() => undefined));
   }
 }
