@@ -9,10 +9,13 @@
       "proposedCategory": "技術・工学・コンピューティング・AI",
       "sourceType": "existing_article",
       "sourceReference": "art_FA3A6B44A79B112D6F95006B73",
-      "status": "accepted",
+      "status": "queued",
       "id": "cand-30c96daa-5afb-4e42-a623-b124c08981e5",
       "discoveredAt": "2026-09-01T20:38:12.489Z",
-      "attemptCount": 0
+      "attemptCount": 1,
+      "lastAttemptAt": "2026-09-02T02:23:34.629Z",
+      "articleId": "art_01K1FURINM49AB80595906F4B0",
+      "jobId": "job-20260902022334-cbj8jj"
     },
     {
       "rawTopic": "GPUとは何か――グラフィックボードとの定義の違いの応用",
@@ -22,10 +25,13 @@
       "proposedCategory": "技術・工学・コンピューティング・AI",
       "sourceType": "existing_article",
       "sourceReference": "art_FA3A6B44A79B112D6F95006B73",
-      "status": "accepted",
+      "status": "queued",
       "id": "cand-03c74ff8-9f00-44b1-8b9a-89733a675757",
       "discoveredAt": "2026-09-01T20:38:12.505Z",
-      "attemptCount": 0
+      "attemptCount": 1,
+      "lastAttemptAt": "2026-09-02T06:50:00.912Z",
+      "articleId": "art_01K1GE3EB1C53BF7A9EDA95040",
+      "jobId": "job-20260902065000-aeawvv"
     },
     {
       "rawTopic": "GPUとは何か――グラフィックボードとの定義の違いと関連技術の比較",
@@ -48,13 +54,48 @@
       "startedAt": "2026-09-01T20:38:12.437Z",
       "completedAt": "2026-09-01T20:38:12.520Z",
       "result": "dry_run:cand-30c96daa-5afb-4e42-a623-b124c08981e5"
+    },
+    {
+      "id": "tick-1727fbf8ed60eddc",
+      "scheduledAt": "2026-09-02T02:16:22.889Z",
+      "startedAt": "2026-09-02T02:16:22.900Z",
+      "completedAt": "2026-09-02T02:16:22.923Z",
+      "result": "skipped:queue_busy"
+    },
+    {
+      "id": "tick-166db9721fb7f954",
+      "scheduledAt": "2026-09-02T02:23:33.793Z",
+      "startedAt": "2026-09-02T02:23:33.824Z",
+      "completedAt": "2026-09-02T02:23:34.734Z",
+      "result": "queued:cand-30c96daa-5afb-4e42-a623-b124c08981e5"
+    },
+    {
+      "id": "tick-addadecca774ba77",
+      "scheduledAt": "2026-09-02T06:50:00.103Z",
+      "startedAt": "2026-09-02T06:50:00.115Z",
+      "completedAt": "2026-09-02T06:50:01.018Z",
+      "result": "queued:cand-03c74ff8-9f00-44b1-8b9a-89733a675757"
+    },
+    {
+      "id": "tick-88f23cf733c8d151",
+      "scheduledAt": "2026-09-02T07:05:37.355Z",
+      "startedAt": "2026-09-02T07:05:37.380Z",
+      "completedAt": "2026-09-02T07:05:37.402Z",
+      "result": "skipped:manual_pause"
+    },
+    {
+      "id": "tick-052d90c955c34bd2",
+      "scheduledAt": "2026-09-02T07:47:49.319Z",
+      "startedAt": "2026-09-02T07:47:49.343Z",
+      "completedAt": "2026-09-02T07:47:49.370Z",
+      "result": "skipped:manual_pause"
     }
   ],
   "state": {
     "enabled": true,
-    "manualPaused": false,
+    "manualPaused": true,
     "pauseReasons": [],
-    "lastTickAt": "2026-09-01T20:38:12.437Z",
-    "nextTickAt": "2026-09-01T20:46:10.434Z"
+    "lastTickAt": "2026-09-02T07:47:49.343Z",
+    "nextTickAt": "2026-09-02T07:54:49.866Z"
   }
 }
