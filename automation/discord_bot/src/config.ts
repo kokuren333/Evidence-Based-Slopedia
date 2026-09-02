@@ -107,6 +107,9 @@ export const config = {
     minuteJst: intEnv("EBS_BACKUP_MINUTE_JST", 30),
     retention: { daily: intEnv("EBS_BACKUP_RETENTION_DAILY", 7), weekly: intEnv("EBS_BACKUP_RETENTION_WEEKLY", 4), monthly: intEnv("EBS_BACKUP_RETENTION_MONTHLY", 3) },
   },
+  autoDeploy: {
+    enabled: boolEnv("EBS_AUTO_DEPLOY_ENABLED", false),
+  },
   autoGeneration: {
     enabled: boolEnv("EBS_AUTO_ENABLED", true), minIntervalMinutes: intEnv("EBS_AUTO_MIN_INTERVAL_MINUTES", 5), maxIntervalMinutes: intEnv("EBS_AUTO_MAX_INTERVAL_MINUTES", 10), maxPerHour: intEnv("EBS_AUTO_MAX_PER_HOUR", 6), maxPerDay: intEnv("EBS_AUTO_MAX_PER_DAY", 50),
   },
