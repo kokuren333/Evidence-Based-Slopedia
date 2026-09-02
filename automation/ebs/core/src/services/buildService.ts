@@ -95,19 +95,19 @@ md.renderer.rules.fence = (tokens, idx, options, env, self) => tokens[idx].info.
 function markdown(value:string, links:Map<string,ArticleMetadata>, urls:PublicUrlService, headings:Array<{level:number;text:string;id:string}>, current?:ArticleMetadata) {
   let body = value.replace(/^---[\s\S]*?---\s*/m, "");
   const protectedParts: string[] = [];
-  const protect = (text: string) => { const key = `\u0000MATH${protectedParts.length}\u0000`; protectedParts.push(text); return key; };
+  const protect = (text: string) => { const key = `EBECODETOKEN${protectedParts.length}EBE`; protectedParts.push(text); return key; };
   body = body.replace(/```[\s\S]*?```/g, protect).replace(/`[^`\n]+`/g, protect);
   const mathParts: string[] = [];
-  const protectMath = (html: string) => { const key = `\u0000MATHHTML${mathParts.length}\u0000`; mathParts.push(html); return key; };
+  const protectMath = (html: string) => { const key = `EBEMATHTOKEN${mathParts.length}EBE`; mathParts.push(html); return key; };
   body = body.replace(/\$\$([\s\S]+?)\$\$/g, (_m, expr) => protectMath(`<div class="math-display">${katex.renderToString(String(expr).trim(), { displayMode: true, throwOnError: false, output: "html" })}</div>`));
   body = body.replace(/\\\[([\s\S]+?)\\\]/g, (_m, expr) => protectMath(`<div class="math-display">${katex.renderToString(String(expr).trim(), { displayMode: true, throwOnError: false, output: "html" })}</div>`));
   body = body.replace(/(?<!\$)\$([^$\n]+?)\$(?!\$)/g, (_m, expr) => protectMath(katex.renderToString(String(expr).trim(), { displayMode: false, throwOnError: false, output: "html" })));
   body = body.replace(/\\\(([^\n]+?)\\\)/g, (_m, expr) => protectMath(katex.renderToString(String(expr).trim(), { displayMode: false, throwOnError: false, output: "html" })));
-  body = body.replace(/\u0000MATH(\d+)\u0000/g, (_m, index) => protectedParts[Number(index)]);
+  body = body.replace(/EBECODETOKEN(\d+)EBE/g, (_m, index) => protectedParts[Number(index)]);
   body = body.replace(/!\[\[([^\]|#]+)(?:#[^\]|]+)?(?:\|([^\]]+))?\]\]/g, (_whole, target, label) => `![${label ?? path.basename(String(target), path.extname(String(target)))}](${current?.image ? urls.assetUrl(`articles/${current.id}${path.extname(current.image.path).toLowerCase()}`) : urls.assetUrl(String(target).replace(/\\/g, "/"))})`);
   body = body.replace(/(?<!!)\[\[([^\]|#]+)(?:#[^\]|]+)?(?:\|([^\]]+))?\]\]/g, (whole,target,label) => { const article=links.get(normalize(target)); return article ? `[${label ?? article.title}](${urls.articleUrl(article)})` : whole; });
   const rendered = md.render(body).replace(/<h([2-6])>([^<]*)<\/h\1>/g, (_all: string, level: string, text: string) => { const h=headings.find(item=>item.level===Number(level)&&item.text===text); return `<h${level} id="${esc(h?.id ?? slugifyHeading(text))}">${text}</h${level}>`; });
-  return rendered.replace(/\u0000MATHHTML(\d+)\u0000/g, (_m, index) => mathParts[Number(index)]);
+  return rendered.replace(/EBEMATHTOKEN(\d+)EBE/g, (_m, index) => mathParts[Number(index)]);
 }
 function slugifyHeading(value:string) { return `h-${value.normalize("NFKC").toLocaleLowerCase("ja").replace(/[^\p{L}\p{N}]+/gu,"-").replace(/^-|-$/g,"") || "section"}`; }
 function headingList(value:string) { const seen=new Map<string,number>(); return [...value.replace(/^---[\s\S]*?---\s*/m, "").matchAll(/^(#{2,3})\s+(.+)$/gm)].map((match) => { const text=match[2].trim(); const base=slugifyHeading(text); const count=(seen.get(base)??0)+1; seen.set(base,count); return { level:match[1].length, text, id:count===1?base:`${base}-${count}` }; }); }
