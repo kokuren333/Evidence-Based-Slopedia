@@ -201,11 +201,11 @@ export function createDiscordClient(
         await interaction.reply(
           [
             dryRun ? "cleanup dry-run targets:" : "cleanup completed:",
-            cleaned.length ? ["```text", cleaned.slice(0, 25).join("\n"), "```"].join("\n") : "No matching worktrees.",
+            cleaned.jobs.length ? ["```text", `worktrees (${cleaned.worktrees.length}):`, ...cleaned.worktrees.slice(0, 25), `jobs (${cleaned.jobs.length}):`, ...cleaned.jobs.slice(0, 25), `logs (${cleaned.logs.length}):`, ...cleaned.logs.slice(0, 25), "```"].join("\n") : "No matching terminal jobs.",
           ].join("\n"),
         );
       } else if (interaction.commandName === "job-list") {
-        const jobs = await jobService.list(10);
+        const jobs = await jobService.list(50);
         await interaction.reply(jobs.length ? jobs.map(formatJobLine).join("\n") : "No jobs yet.");
       } else if (interaction.commandName === "worker-list") {
         const workers = getWorkerPool().listActiveWorkers();

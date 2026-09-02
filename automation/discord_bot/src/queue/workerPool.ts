@@ -1,5 +1,6 @@
 import { config } from "../config.js";
 import path from "node:path";
+import fs from "node:fs/promises";
 import { commitWorkerChanges, publishCanonicalManagementState, publishWorkerBranch } from "../runners/gitPublisher.js";
 import { assertArticleImagePaths } from "../runners/imagePathChecker.js";
 import { assertMocIntegrity } from "../runners/mocIntegrityChecker.js";
@@ -61,30 +62,28 @@ export class WorkerPool {
     return this.supervisor.cancelActiveJob(jobId);
   }
 
-  async cleanupFailedWorktrees(olderThanDays: number, dryRun: boolean): Promise<string[]> {
+  async cleanupFailedWorktrees(olderThanDays: number, dryRun: boolean): Promise<{ worktrees: string[]; jobs: string[]; logs: string[] }> {
     const cutoff = Date.now() - olderThanDays * 24 * 60 * 60 * 1000;
-    const jobs = await this.store.all();
-    const targets = jobs.filter((job) => {
+    const allJobs = await this.store.all();
+    const targets = allJobs.filter((job) => {
       if (!["failed", "failed_review_required", "cancelled"].includes(job.status)) return false;
       if (!job.worktreePath || !job.branchName) return false;
       const finishedAt = job.finishedAt ?? job.updatedAt;
       return new Date(finishedAt).getTime() <= cutoff;
     });
-    const cleaned: string[] = [];
+    const worktrees: string[] = []; const jobIds: string[] = []; const logs: string[] = [];
     for (const job of targets) {
-      cleaned.push(`${job.id}: ${job.worktreePath}`);
+      worktrees.push(`${job.id}: ${job.worktreePath}`); jobIds.push(job.id);
+      for (const file of await fs.readdir(config.paths.logDir).catch(() => [])) if (file.includes(job.id)) logs.push(path.join(config.paths.logDir, file));
       if (!dryRun) {
         await removeWorktree(job.worktreePath!, job.branchName!).catch((error) =>
           writeJobLog(job.id, `cleanup failed: ${error instanceof Error ? error.message : String(error)}`),
         );
-        await this.store.update(job.id, {
-          resultSummary: `Failed worktree cleanup ${new Date().toISOString()}`,
-          worktreePath: undefined,
-          branchName: undefined,
-        });
+        for (const file of logs.filter((item) => item.includes(job.id))) await fs.rm(file, { force: true });
+        await this.store.remove(job.id);
       }
     }
-    return cleaned;
+    return { worktrees, jobs: jobIds, logs };
   }
 
   private async runJob(initialJob: Job): Promise<void> {

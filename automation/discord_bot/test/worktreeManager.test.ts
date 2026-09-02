@@ -42,7 +42,7 @@ test("cleanupFailedWorktrees removes retained failed worktree and branch", async
   await store.update(created.id, { status: "failed", finishedAt: "2000-01-01T00:00:00.000Z", ...descriptor });
   const pool = new WorkerPool(store, {} as never);
   const cleaned = await pool.cleanupFailedWorktrees(1, false);
-  assert.equal(cleaned.length, 1);
+  assert.equal(cleaned.jobs.length, 1);
   await assert.rejects(fs.access(descriptor.worktreePath));
-  assert.equal((await store.get(created.id))?.worktreePath, undefined);
+  assert.equal(await store.get(created.id), undefined);
 });
