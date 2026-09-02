@@ -13,11 +13,14 @@ export class FilesystemArticleRepository implements ArticleRepository {
   readonly redirectsFile: string;
   private readonly locks: FilesystemMutationLock;
 
-  constructor(readonly vaultRoot: string) {
+  constructor(readonly vaultRoot: string, options: { eventsFile?: string } = {}) {
     this.articlesDir = path.join(vaultRoot, "canonical", "metadata", "articles");
     this.tombstonesDir = path.join(vaultRoot, "canonical", "metadata", "tombstones");
     this.revisionsDir = path.join(vaultRoot, "canonical", "revisions");
-    this.eventsFile = path.join(vaultRoot, "canonical", "events", "management-events.jsonl");
+    // The canonical file remains the default for CLI/library callers.  The
+    // long-running Discord bot supplies a runtime event log so its control
+    // plane cannot dirty the checkout used to publish worker branches.
+    this.eventsFile = options.eventsFile ?? path.join(vaultRoot, "canonical", "events", "management-events.jsonl");
     this.redirectsFile = path.join(vaultRoot, "canonical", "metadata", "redirects.yml");
     this.locks = new FilesystemMutationLock(vaultRoot);
   }

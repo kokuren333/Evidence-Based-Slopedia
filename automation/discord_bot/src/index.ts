@@ -28,7 +28,7 @@ await ensureDir(config.paths.worktreeRoot);
 const store = new JobStore();
 await store.init();
 const { jobService } = createEbsApplication(store);
-const articleRepository = new FilesystemArticleRepository(config.paths.vaultRoot);
+const articleRepository = new FilesystemArticleRepository(config.paths.vaultRoot, { eventsFile: config.paths.managementEventsFile });
 const autoGenerator: ArticleGenerator = { generate: async (request) => { const job = await jobService.enqueue({ query: request.prompt ?? `Create autonomous EBS article ${request.article.title}`, mode: "new", jobType: "article", article: { articleId: request.article.id, operation: "create", sourcePath: request.article.sourcePath, operationId: request.operationId }, discordUserId: "auto-generation-scheduler", channelId: config.dailyNews.channelId || "scheduler", guildId: config.discord.guildId, model: config.codex.model, reasoningEffort: config.codex.reasoningEffort, priority: "P4", idempotencyKey: `auto:${request.article.title.normalize("NFKC").toLocaleLowerCase("ja")}` }); return { jobId: job.id, sourcePath: request.article.sourcePath, pending: true }; } };
 // Scheduler/control-plane state is runtime state. The vault registry is an
 // artifact produced by article workers and must never be written by the bot

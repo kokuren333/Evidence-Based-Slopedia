@@ -60,9 +60,12 @@ export const config = {
   paths: {
     vaultRoot: path.resolve(env("EBE_VAULT_ROOT")),
     worktreeRoot: path.resolve(env("EBE_WORKTREE_ROOT")),
-    runtimeDir: resolveBotPath(env("EBE_BOT_RUNTIME_DIR", path.join("..", "discord_bot-runtime"))),
-    dataDir: resolveBotPath(env("EBE_BOT_DATA_DIR", path.join("..", "discord_bot-runtime", "data"))),
-    logDir: resolveBotPath(env("EBE_BOT_LOG_DIR", path.join("..", "discord_bot-runtime", "logs"))),
+    // Keep mutable bot state outside the Vault checkout. A bot process must
+    // never create untracked files beside the worker-published content.
+    runtimeDir: resolveBotPath(env("EBE_BOT_RUNTIME_DIR", path.join("..", "..", "..", "discord_bot-runtime"))),
+    dataDir: resolveBotPath(env("EBE_BOT_DATA_DIR", path.join("..", "..", "..", "discord_bot-runtime", "data"))),
+    logDir: resolveBotPath(env("EBE_BOT_LOG_DIR", path.join("..", "..", "..", "discord_bot-runtime", "logs"))),
+    managementEventsFile: resolveBotPath(env("EBE_BOT_MANAGEMENT_EVENTS_FILE", path.join("..", "..", "..", "discord_bot-runtime", "management-events.jsonl"))),
   },
   workers: {
     maxWorkers: Math.max(1, intEnv("EBE_MAX_WORKERS", 1)),

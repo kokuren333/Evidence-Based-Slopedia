@@ -8,6 +8,7 @@
 !/automation/discord_bot/.env.example
 /automation/discord_bot/data/
 /automation/discord_bot/logs/
+/automation/discord_bot-runtime/
 /automation/discord_bot/node_modules/
 **/node_modules/
 /automation/discord_bot/.cache/

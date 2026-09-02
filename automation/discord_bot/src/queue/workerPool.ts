@@ -127,7 +127,7 @@ export class WorkerPool {
         }
 
         if (job.article) {
-          const workerArticles = new FilesystemArticleRepository(job.worktreePath!);
+          const workerArticles = new FilesystemArticleRepository(job.worktreePath!, { eventsFile: config.paths.managementEventsFile });
           const completedSourcePath = await this.resolveWorkerArticlePath(job);
           if (!completedSourcePath) throw new Error("Published article source could not be identified in worker changes.");
           const operationId = job.article.operationId;
@@ -159,7 +159,7 @@ export class WorkerPool {
         if (config.autoDeploy.enabled && ["article", "daily_news", "daily_forecast", "image_maintenance"].includes(job.jobType ?? "article")) {
           const pagesDirectory = process.env.EBS_GITHUB_PAGES_DIR;
           if (!pagesDirectory) throw new Error("Automatic deployment is enabled but EBS_GITHUB_PAGES_DIR is not configured.");
-          const repository = new FilesystemArticleRepository(config.paths.vaultRoot);
+          const repository = new FilesystemArticleRepository(config.paths.vaultRoot, { eventsFile: config.paths.managementEventsFile });
           const indexes = new IndexService(config.paths.vaultRoot, repository);
           await indexes.rebuildAll();
           await new BuildService(config.paths.vaultRoot, repository, indexes).build();
@@ -199,7 +199,7 @@ export class WorkerPool {
       if (updated.article && current.worktreePath) {
         try {
           await fs.access(current.worktreePath);
-          const articles = new FilesystemArticleRepository(current.worktreePath);
+          const articles = new FilesystemArticleRepository(current.worktreePath, { eventsFile: config.paths.managementEventsFile });
           await new ReconciliationService(current.worktreePath, articles, this.store).reconcileJob(updated).catch(() => undefined);
           const failedArticle = await articles.getById(updated.article.articleId);
           if (failedArticle?.autonomous?.candidateId) {
