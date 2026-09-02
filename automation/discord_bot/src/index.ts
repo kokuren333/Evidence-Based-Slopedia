@@ -30,7 +30,10 @@ await store.init();
 const { jobService } = createEbsApplication(store);
 const articleRepository = new FilesystemArticleRepository(config.paths.vaultRoot);
 const autoGenerator: ArticleGenerator = { generate: async (request) => { const job = await jobService.enqueue({ query: request.prompt ?? `Create autonomous EBS article ${request.article.title}`, mode: "new", jobType: "article", article: { articleId: request.article.id, operation: "create", sourcePath: request.article.sourcePath, operationId: request.operationId }, discordUserId: "auto-generation-scheduler", channelId: config.dailyNews.channelId || "scheduler", guildId: config.discord.guildId, model: config.codex.model, reasoningEffort: config.codex.reasoningEffort, priority: "P4", idempotencyKey: `auto:${request.article.title.normalize("NFKC").toLocaleLowerCase("ja")}` }); return { jobId: job.id, sourcePath: request.article.sourcePath, pending: true }; } };
-const candidateRegistry = new CandidateRegistry(path.join(config.paths.vaultRoot, "canonical", "autonomous", "registry.json"));
+// Scheduler/control-plane state is runtime state. The vault registry is an
+// artifact produced by article workers and must never be written by the bot
+// process while the main checkout is being used for publication.
+const candidateRegistry = new CandidateRegistry(path.join(config.paths.runtimeDir, "autonomous", "registry.json"));
 const autoService = new AutoGenerationService(store, candidateRegistry, new TopicDiscoveryService(articleRepository, candidateRegistry, new HttpWikipediaClient()), new ContentService(config.paths.vaultRoot, articleRepository, autoGenerator), createResourceGuard(), { maxPerHour: config.autoGeneration.maxPerHour, maxPerDay: config.autoGeneration.maxPerDay, cooldownMinutes: [60, 360, 1440, 10080], circuitWindow: 10, circuitMaxFailures: 5, circuitCooldownMinutes: 60, languages: ["ja", "en"] });
 const scheduler = new SchedulerService(autoService, candidateRegistry, new FilesystemMutationLock(config.paths.vaultRoot), { minIntervalMinutes: config.autoGeneration.minIntervalMinutes, maxIntervalMinutes: Math.max(config.autoGeneration.minIntervalMinutes, config.autoGeneration.maxIntervalMinutes) });
 const backupService = new BackupService(config.paths.vaultRoot);

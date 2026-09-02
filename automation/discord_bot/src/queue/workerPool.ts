@@ -131,7 +131,13 @@ export class WorkerPool {
           if (reconciliation?.reviewRequired) throw new Error(`Article reconciliation review required: ${reconciliation.message}`);
           await new IndexService(job.worktreePath!, workerArticles).rebuildAll();
           const completed = await workerArticles.getById(job.article.articleId);
-          if (completed?.autonomous?.candidateId) await new CandidateRegistry(path.join(job.worktreePath!, "canonical", "autonomous", "registry.json")).update(completed.autonomous.candidateId, { status: "generated", articleId: completed.id, jobId: job.id, lastAttemptAt: new Date().toISOString() });
+          if (completed?.autonomous?.candidateId) {
+            const workerRegistry = new CandidateRegistry(path.join(job.worktreePath!, "canonical", "autonomous", "registry.json"));
+            const controlRegistry = new CandidateRegistry(path.join(config.paths.runtimeDir, "autonomous", "registry.json"));
+            const candidate = await controlRegistry.get(completed.autonomous.candidateId);
+            if (candidate) await workerRegistry.upsert(candidate);
+            await workerRegistry.update(completed.autonomous.candidateId, { status: "generated", articleId: completed.id, jobId: job.id, lastAttemptAt: new Date().toISOString() });
+          }
         }
 
         const commitSha = await commitWorkerChanges(job);
@@ -195,8 +201,11 @@ export class WorkerPool {
           await new ReconciliationService(current.worktreePath, articles, this.store).reconcileJob(updated).catch(() => undefined);
           const failedArticle = await articles.getById(updated.article.articleId);
           if (failedArticle?.autonomous?.candidateId) {
-            await new CandidateRegistry(path.join(current.worktreePath, "canonical", "autonomous", "registry.json"))
-              .recordFailure(failedArticle.autonomous.candidateId, [60, 360, 1440, 10080]).catch(() => undefined);
+            const workerRegistry = new CandidateRegistry(path.join(current.worktreePath, "canonical", "autonomous", "registry.json"));
+            const controlRegistry = new CandidateRegistry(path.join(config.paths.runtimeDir, "autonomous", "registry.json"));
+            const candidate = await controlRegistry.get(failedArticle.autonomous.candidateId);
+            if (candidate) await workerRegistry.upsert(candidate);
+            await workerRegistry.recordFailure(failedArticle.autonomous.candidateId, [60, 360, 1440, 10080]).catch(() => undefined);
           }
         } catch {
           // Missing worker trees are expected after cleanup; do not fall back
