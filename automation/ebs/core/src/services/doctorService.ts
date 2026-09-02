@@ -50,7 +50,15 @@ export class DoctorService {
     const allowedGenerated = new Set(["search-index.json", "category-index.json", "related.json", "backlink-index.json", "sitemap.xml", "index-manifest.json"]); for (const entry of await fs.readdir(this.indexes.generatedDir, { withFileTypes: true }).catch(() => [])) if (!(entry.isDirectory() && entry.name === "moc") && !(entry.isFile() && allowedGenerated.has(entry.name))) findings.push({ ...f("ORPHAN_GENERATED_ARTIFACT", "WARNING", "index", entry.name, true, false), path: path.join("generated", entry.name) });
     const mocDir = path.join(this.indexes.generatedDir, "moc"); if (!await exists(mocDir)) findings.push(f("MISSING_MOC", "ERROR", "moc", "generated/moc missing", true, false)); else { const mocText = (await Promise.all((await listFiles(mocDir)).map((file) => fs.readFile(file, "utf8")))).join("\n"); for (const id of publicIds) { const count = [...mocText.matchAll(new RegExp(`<!--\\s*${escapeRegExp(id)}\\s*-->`, "g"))].length; if (count === 0) findings.push(f("PUBLIC_ARTICLE_MISSING_FROM_MOC", "ERROR", "moc", id, true, false, id)); if (count > 1) findings.push(f("DUPLICATE_MOC_ENTRY", "ERROR", "moc", id, true, false, id)); } for (const match of mocText.matchAll(/<!--\s*(art_[A-Za-z0-9._-]+)\s*-->/g)) if (!publicIds.has(match[1])) findings.push(f("PRIVATE_ARTICLE_IN_MOC", "CRITICAL", "moc", match[1], true, false, match[1])); }
     try { await this.buildService.validate(); } catch (error) { findings.push(f("DIST_INVALID_OR_STALE", "ERROR", "build", error instanceof Error ? error.message : String(error), true, false)); }
-    for (const job of await this.jobs?.all() ?? []) { if (["failed", "failed_review_required"].includes(job.status) && job.worktreePath) findings.push(f("FAILED_JOB_RESIDUE", "WARNING", "runtime", `${job.id}: ${job.worktreePath}`, false, true)); if (["running", "waiting_publish", "publishing"].includes(job.status)) findings.push(f("INTERRUPTED_JOB", "ERROR", "runtime", `${job.id}: ${job.status}`, false, true)); }
+    for (const job of await this.jobs?.all() ?? []) {
+      if (["failed", "failed_review_required"].includes(job.status) && job.worktreePath) findings.push(f("FAILED_JOB_RESIDUE", "WARNING", "runtime", `${job.id}: ${job.worktreePath}`, false, true));
+      if (["running", "waiting_publish", "publishing"].includes(job.status)) findings.push(f("INTERRUPTED_JOB", "ERROR", "runtime", `${job.id}: ${job.status}`, false, true));
+      if (["failed", "failed_review_required", "cancelled"].includes(job.status) && job.article) {
+        const article = metadata.find((item) => item.id === job.article!.articleId);
+        const publishedPath = normalizePath(job.article.sourcePath).startsWith("10_published/");
+        if (publishedPath && (!article || article.status !== "published")) findings.push(f("FAILED_JOB_PUBLISHED_RESIDUE", "CRITICAL", "runtime", `${job.id}: ${job.article.sourcePath}`, false, true, job.article.articleId));
+      }
+    }
     return findings;
   }
 }
