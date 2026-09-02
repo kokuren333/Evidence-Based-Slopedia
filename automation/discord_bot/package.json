@@ -19,6 +19,7 @@
   "dependencies": {
     "discord.js": "^14.18.0",
     "dotenv": "^16.4.7",
+    "katex": "^0.16.25",
     "markdown-it": "^15.0.1",
     "sharp": "^0.35.4"
   },

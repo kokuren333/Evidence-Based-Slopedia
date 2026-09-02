@@ -8,6 +8,7 @@ import { canonicalStateHash, collectPublicArticles, type PublicArticle } from ".
 import { IndexService } from "./indexService.js";
 import { PublicUrlService, type PublicSiteConfig } from "./publicUrlService.js";
 import MarkdownIt from "markdown-it";
+import katex from "katex";
 
 export interface BuildResult { distDir: string; articleCount: number; newsCount: number; sourceRevisionHash: string; builtArticle?: string; }
 interface NewsItem { title: string; date: string; category: string; slug: string; body: string; summary: string; }
@@ -50,7 +51,7 @@ export class BuildService {
   }
 
   private async render(out: string, articles: PublicArticle[], news: NewsItem[], hash: string): Promise<void> {
-    await fs.mkdir(path.join(out, "assets"), { recursive: true }); await fs.writeFile(path.join(out, "assets", "ebs.css"), CSS + "\n.skip-link{left:0;transform:none;width:1px;height:1px;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap}.skip-link:focus{width:auto;height:auto;margin:0;clip:auto;top:1rem}.content p{overflow-wrap:anywhere}.content img{display:block;max-width:100%;height:auto}.content table{width:100%;border-collapse:collapse;table-layout:fixed}.content th,.content td{border:1px solid var(--border);padding:.65rem .75rem;text-align:left;vertical-align:top;overflow-wrap:anywhere}.content th{background:#eef2f2;font-weight:700}\n"); await fs.writeFile(path.join(out, "assets", "search.js"), SEARCH); await fs.writeFile(path.join(out, "assets", "favicon.svg"), FAVICON);
+    await fs.mkdir(path.join(out, "assets"), { recursive: true }); await fs.writeFile(path.join(out, "assets", "ebs.css"), CSS + "\n.katex{font-size:1.05em}.katex-display{overflow-x:auto;overflow-y:hidden;margin:1.25rem 0}\n.skip-link{left:0;transform:none;width:1px;height:1px;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap}.skip-link:focus{width:auto;height:auto;margin:0;clip:auto;top:1rem}.content p{overflow-wrap:anywhere}.content img{display:block;max-width:100%;height:auto}.content table{width:100%;border-collapse:collapse;table-layout:fixed}.content th,.content td{border:1px solid var(--border);padding:.65rem .75rem;text-align:left;vertical-align:top;overflow-wrap:anywhere}.content th{background:#eef2f2;font-weight:700}\n"); await fs.writeFile(path.join(out, "assets", "search.js"), SEARCH); await fs.writeFile(path.join(out, "assets", "favicon.svg"), FAVICON);
     const related = await readJson<Record<string, Array<{ id: string; score: number }>>>(path.join(this.indexes.generatedDir, "related.json")) ?? {};
     const categories = await readJson<Record<string, string[]>>(path.join(this.indexes.generatedDir, "category-index.json")) ?? {};
     const byId = new Map(articles.map((item) => [item.metadata.id, item.metadata])); const links = linkMap(articles);
@@ -93,9 +94,20 @@ const defaultFence = md.renderer.rules.fence;
 md.renderer.rules.fence = (tokens, idx, options, env, self) => tokens[idx].info.trim().toLowerCase() === "mermaid" ? `<pre class="mermaid">${esc(tokens[idx].content.trim())}</pre>` : (defaultFence ? defaultFence(tokens, idx, options, env, self) : self.renderToken(tokens, idx, options));
 function markdown(value:string, links:Map<string,ArticleMetadata>, urls:PublicUrlService, headings:Array<{level:number;text:string;id:string}>, current?:ArticleMetadata) {
   let body = value.replace(/^---[\s\S]*?---\s*/m, "");
+  const protectedParts: string[] = [];
+  const protect = (text: string) => { const key = `\u0000MATH${protectedParts.length}\u0000`; protectedParts.push(text); return key; };
+  body = body.replace(/```[\s\S]*?```/g, protect).replace(/`[^`\n]+`/g, protect);
+  const mathParts: string[] = [];
+  const protectMath = (html: string) => { const key = `\u0000MATHHTML${mathParts.length}\u0000`; mathParts.push(html); return key; };
+  body = body.replace(/\$\$([\s\S]+?)\$\$/g, (_m, expr) => protectMath(`<div class="math-display">${katex.renderToString(String(expr).trim(), { displayMode: true, throwOnError: false, output: "html" })}</div>`));
+  body = body.replace(/\\\[([\s\S]+?)\\\]/g, (_m, expr) => protectMath(`<div class="math-display">${katex.renderToString(String(expr).trim(), { displayMode: true, throwOnError: false, output: "html" })}</div>`));
+  body = body.replace(/(?<!\$)\$([^$\n]+?)\$(?!\$)/g, (_m, expr) => protectMath(katex.renderToString(String(expr).trim(), { displayMode: false, throwOnError: false, output: "html" })));
+  body = body.replace(/\\\(([^\n]+?)\\\)/g, (_m, expr) => protectMath(katex.renderToString(String(expr).trim(), { displayMode: false, throwOnError: false, output: "html" })));
+  body = body.replace(/\u0000MATH(\d+)\u0000/g, (_m, index) => protectedParts[Number(index)]);
   body = body.replace(/!\[\[([^\]|#]+)(?:#[^\]|]+)?(?:\|([^\]]+))?\]\]/g, (_whole, target, label) => `![${label ?? path.basename(String(target), path.extname(String(target)))}](${current?.image ? urls.assetUrl(`articles/${current.id}${path.extname(current.image.path).toLowerCase()}`) : urls.assetUrl(String(target).replace(/\\/g, "/"))})`);
   body = body.replace(/(?<!!)\[\[([^\]|#]+)(?:#[^\]|]+)?(?:\|([^\]]+))?\]\]/g, (whole,target,label) => { const article=links.get(normalize(target)); return article ? `[${label ?? article.title}](${urls.articleUrl(article)})` : whole; });
-  return md.render(body).replace(/<h([2-6])>([^<]*)<\/h\1>/g, (_all: string, level: string, text: string) => { const h=headings.find(item=>item.level===Number(level)&&item.text===text); return `<h${level} id="${esc(h?.id ?? slugifyHeading(text))}">${text}</h${level}>`; });
+  const rendered = md.render(body).replace(/<h([2-6])>([^<]*)<\/h\1>/g, (_all: string, level: string, text: string) => { const h=headings.find(item=>item.level===Number(level)&&item.text===text); return `<h${level} id="${esc(h?.id ?? slugifyHeading(text))}">${text}</h${level}>`; });
+  return rendered.replace(/\u0000MATHHTML(\d+)\u0000/g, (_m, index) => mathParts[Number(index)]);
 }
 function slugifyHeading(value:string) { return `h-${value.normalize("NFKC").toLocaleLowerCase("ja").replace(/[^\p{L}\p{N}]+/gu,"-").replace(/^-|-$/g,"") || "section"}`; }
 function headingList(value:string) { const seen=new Map<string,number>(); return [...value.replace(/^---[\s\S]*?---\s*/m, "").matchAll(/^(#{2,3})\s+(.+)$/gm)].map((match) => { const text=match[2].trim(); const base=slugifyHeading(text); const count=(seen.get(base)??0)+1; seen.set(base,count); return { level:match[1].length, text, id:count===1?base:`${base}-${count}` }; }); }
