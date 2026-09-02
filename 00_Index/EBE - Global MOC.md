@@ -14,7 +14,7 @@
 - [[10_Published/03_Society_Policy_Law_Governance/_MOC.md|社会・政策・法・ガバナンス]] - 1 subfields, 1 articles
 - [[10_Published/04_Economy_Business_Work/_MOC.md|経済・ビジネス・仕事]] - 1 subfields, 1 articles
 - [[10_Published/05_Nature_Science_Environment/_MOC.md|自然科学・環境]] - 1 subfields, 1 articles
-- [[10_Published/06_Mathematics_Logic_Formal_Systems/_MOC.md|数学・論理・形式体系]] - 0 subfields, 0 articles
+- [[10_Published/06_Mathematics_Logic_Formal_Systems/_MOC.md|数学・論理・形式体系]] - 1 subfield, 1 article
 - [[10_Published/07_Technology_Engineering_Computing_AI/_MOC.md|技術・工学・コンピューティング・AI]] - 1 subfield, 1 article
 - [[10_Published/08_Humanities_History_Culture_Arts/_MOC.md|人文・歴史・文化・芸術]] - 2 subfields, 2 articles
 - [[10_Published/09_Information_Media_OSINT_Security/_MOC.md|情報・メディア・OSINT・セキュリティ]] - 0 subfields, 0 articles
