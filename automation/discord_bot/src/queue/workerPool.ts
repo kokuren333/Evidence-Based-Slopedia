@@ -2,7 +2,7 @@ import { config } from "../config.js";
 import path from "node:path";
 import fs from "node:fs/promises";
 import { commitWorkerChanges, publishWorkerBranch } from "../runners/gitPublisher.js";
-import { assertArticleImagePaths } from "../runners/imagePathChecker.js";
+import { removeUnresolvedImageReferences } from "../runners/imagePathChecker.js";
 import { assertMocIntegrity } from "../runners/mocIntegrityChecker.js";
 import { hasDurableArticleChanges } from "../runners/publishGateChecker.js";
 import { runCodexForJob } from "../runners/codexRunner.js";
@@ -122,7 +122,7 @@ export class WorkerPool {
           const targetArticlePaths = job.jobType === "article"
             ? await changedPublishedArticlePaths(job.worktreePath!, job.baseCommit)
             : undefined;
-          await assertArticleImagePaths(job.worktreePath!, scope, targetArticlePaths);
+          await removeUnresolvedImageReferences(job.worktreePath!, scope, targetArticlePaths);
         }
         await this.throwIfCancelled(job.id);
         const requiredArtifactPrefix = job.jobType === "daily_news" ? "11_Daily/" : job.jobType === "daily_forecast" ? "12_Forecasting/" : "10_Published/";

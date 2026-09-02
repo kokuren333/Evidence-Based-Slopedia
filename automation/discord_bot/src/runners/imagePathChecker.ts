@@ -30,6 +30,27 @@ export async function assertArticleImagePaths(cwd: string, scope: ImagePathScope
   }
 }
 
+/** Remove only unresolved optional image references; existing references are untouched. */
+export async function removeUnresolvedImageReferences(cwd: string, scope: ImagePathScope = "all", targetArticlePaths?: string[]): Promise<number> {
+  const findings = await findArticleImagePathFindings(cwd, scope, targetArticlePaths);
+  const byFile = new Map<string, Set<string>>();
+  for (const finding of findings) (byFile.get(finding.articlePath) ?? byFile.set(finding.articlePath, new Set()).get(finding.articlePath)!).add(finding.rawTarget);
+  let changed = 0;
+  for (const [articlePath, targets] of byFile) {
+    const absolute = path.join(cwd, articlePath.replace(/\//g, path.sep));
+    let text = await fs.readFile(absolute, "utf8");
+    const before = text;
+    for (const target of targets) {
+      const escaped = target.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      text = text.replace(new RegExp(`^\\s*[^\\r\\n]*${escaped}[^\\r\\n]*\\r?\\n?`, "gm"), "");
+      text = text.replace(new RegExp(`!\\[[^\\]]*\\]\\(${escaped}\\)`, "g"), "");
+      text = text.replace(new RegExp(`!\\[\\[${escaped}\\]\\]`, "g"), "");
+    }
+    if (text !== before) { await fs.writeFile(absolute, text, "utf8"); changed += 1; }
+  }
+  return changed;
+}
+
 async function findArticleImagePathFindings(cwd: string, scope: ImagePathScope, targetArticlePaths?: string[]): Promise<ImageFinding[]> {
   const articleRoots =
     scope === "published"
