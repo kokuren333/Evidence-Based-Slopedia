@@ -4,7 +4,7 @@ import { ensureDir, safeBranchName, safeWorktreePath } from "../utils/paths.js";
 import { requireOk, runGit } from "../utils/shell.js";
 import type { WorktreeManager } from "../../../ebs/core/src/ports/worktreeManager.js";
 
-export async function createWorktree(job: Job): Promise<{ branchName: string; worktreePath: string }> {
+export async function createWorktree(job: Job): Promise<{ branchName: string; worktreePath: string; baseCommit: string }> {
   await ensureDir(config.paths.worktreeRoot);
   const branchName = safeBranchName(job.id);
   const worktreePath = safeWorktreePath(config.paths.worktreeRoot, job.id);
@@ -22,7 +22,9 @@ export async function createWorktree(job: Job): Promise<{ branchName: string; wo
     `${config.git.remote}/${config.git.branch}`,
   ]);
   await requireOk(add, "git worktree add");
-  return { branchName, worktreePath };
+  const base = await runGit(worktreePath, ["rev-parse", "HEAD"]);
+  await requireOk(base, "git rev-parse worktree base");
+  return { branchName, worktreePath, baseCommit: base.stdout.trim() };
 }
 
 export async function removeWorktree(worktreePath: string, branchName: string): Promise<void> {

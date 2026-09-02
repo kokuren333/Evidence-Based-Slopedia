@@ -45,8 +45,8 @@ test("dirty main rejects publication", async () => {
   await removeWorktree(job.worktreePath, job.branchName);
 });
 
-test("canonical management state is committed before worker publication", async () => {
-  const job = await makeJob("canonical-state", "canonical-state.txt"); const commit = await commitWorkerChanges(job); const metadata = path.join(fixture.vault, "canonical", "metadata", "articles", "art_TEST.yml"); await fs.mkdir(path.dirname(metadata), { recursive: true }); await fs.writeFile(metadata, "{}\n"); const published = await publishWorkerBranch({ ...job, commitSha: commit }); assert.equal(await git(fixture.remote, "rev-parse", "main"), published); assert.equal((await git(fixture.vault, "log", "--format=%s", "-3")).includes("Update EBS canonical management state"), true); await removeWorktree(job.worktreePath, job.branchName);
+test("main canonical dirt is rejected instead of being auto-committed", async () => {
+  const job = await makeJob("canonical-state", "canonical-state.txt"); const commit = await commitWorkerChanges(job); const metadata = path.join(fixture.vault, "canonical", "metadata", "articles", "art_TEST.yml"); await fs.mkdir(path.dirname(metadata), { recursive: true }); await fs.writeFile(metadata, "{}\n"); await assert.rejects(publishWorkerBranch({ ...job, commitSha: commit }), /must be clean/); await fs.rm(path.join(fixture.vault, "canonical"), { recursive: true, force: true }); await removeWorktree(job.worktreePath, job.branchName);
 });
 
 test("single-process publish lock serializes concurrent publications", async () => {

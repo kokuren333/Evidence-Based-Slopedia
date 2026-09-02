@@ -60,8 +60,9 @@ export const config = {
   paths: {
     vaultRoot: path.resolve(env("EBE_VAULT_ROOT")),
     worktreeRoot: path.resolve(env("EBE_WORKTREE_ROOT")),
-    dataDir: resolveBotPath(env("EBE_BOT_DATA_DIR", "data")),
-    logDir: resolveBotPath(env("EBE_BOT_LOG_DIR", "logs")),
+    runtimeDir: resolveBotPath(env("EBE_BOT_RUNTIME_DIR", path.join("..", "discord_bot-runtime"))),
+    dataDir: resolveBotPath(env("EBE_BOT_DATA_DIR", path.join("..", "discord_bot-runtime", "data"))),
+    logDir: resolveBotPath(env("EBE_BOT_LOG_DIR", path.join("..", "discord_bot-runtime", "logs"))),
   },
   workers: {
     maxWorkers: Math.max(1, intEnv("EBE_MAX_WORKERS", 1)),

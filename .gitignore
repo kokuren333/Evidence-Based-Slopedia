@@ -20,17 +20,10 @@
 /dist.tmp-*/
 /dist.previous/
 
-/10_Published/*.md
-/10_Published/**/*.md
-/10_Published/*/*/*
 !/10_Published/*/*/.gitkeep
 
-/11_Daily/*.md
-/11_Daily/**/*.md
 !/11_Daily/**/.gitkeep
 
-/12_Forecasting/*.md
-/12_Forecasting/**/*.md
 !/12_Forecasting/**/.gitkeep
 
 /20_EvidencePackets/*

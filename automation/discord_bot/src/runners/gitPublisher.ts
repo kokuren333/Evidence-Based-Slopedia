@@ -34,7 +34,6 @@ export async function publishWorkerBranch(job: Job): Promise<string> {
     if (!job.branchName) throw new Error("Job is missing branchName");
     if (!job.worktreePath) throw new Error("Job is missing worktreePath");
     await configureGitIdentity(config.paths.vaultRoot);
-    await commitPendingCanonicalManagementState();
     await assertMainWorktreeClean();
 
     await requireOk(await runGit(config.paths.vaultRoot, ["checkout", config.git.branch]), "git checkout main branch");
@@ -63,7 +62,7 @@ export async function publishWorkerBranch(job: Job): Promise<string> {
 }
 
 export async function publishCanonicalManagementState(): Promise<string> {
-  return withPublishLock(async () => { await configureGitIdentity(config.paths.vaultRoot); await commitPendingCanonicalManagementState(); await assertMainWorktreeClean(); await requireOk(await runGit(config.paths.vaultRoot, ["pull", "--rebase", config.git.remote, config.git.branch], 240_000), "git pull canonical state"); await requireOk(await runGit(config.paths.vaultRoot, ["push", config.git.remote, config.git.branch], 300_000), "git push canonical state"); const rev = await runGit(config.paths.vaultRoot, ["rev-parse", "HEAD"]); await requireOk(rev, "git rev-parse canonical state"); return rev.stdout.trim(); });
+  return withPublishLock(async () => { await assertMainWorktreeClean(); await requireOk(await runGit(config.paths.vaultRoot, ["pull", "--rebase", config.git.remote, config.git.branch], 240_000), "git pull canonical state"); await requireOk(await runGit(config.paths.vaultRoot, ["push", config.git.remote, config.git.branch], 300_000), "git push canonical state"); const rev = await runGit(config.paths.vaultRoot, ["rev-parse", "HEAD"]); await requireOk(rev, "git rev-parse canonical state"); return rev.stdout.trim(); });
 }
 
 export const gitSourceIntegrationPublisher: SourceIntegrationPublisher<Job> = {

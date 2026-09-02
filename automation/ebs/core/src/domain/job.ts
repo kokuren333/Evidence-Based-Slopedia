@@ -56,6 +56,8 @@ export interface Job extends CoreJob {
   guildId: string | null;
   worktreePath?: string;
   branchName?: string;
+  /** Commit at worktree creation; used to include committed and uncommitted worker diffs. */
+  baseCommit?: string;
   commitSha?: string;
   pushedCommitSha?: string;
   resultSummary?: string;

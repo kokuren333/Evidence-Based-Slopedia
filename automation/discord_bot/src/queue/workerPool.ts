@@ -1,7 +1,7 @@
 import { config } from "../config.js";
 import path from "node:path";
 import fs from "node:fs/promises";
-import { commitWorkerChanges, publishCanonicalManagementState, publishWorkerBranch } from "../runners/gitPublisher.js";
+import { commitWorkerChanges, publishWorkerBranch } from "../runners/gitPublisher.js";
 import { assertArticleImagePaths } from "../runners/imagePathChecker.js";
 import { assertMocIntegrity } from "../runners/mocIntegrityChecker.js";
 import { hasDurableArticleChanges } from "../runners/publishGateChecker.js";
@@ -119,8 +119,18 @@ export class WorkerPool {
           await assertArticleImagePaths(job.worktreePath!, scope);
         }
         await this.throwIfCancelled(job.id);
-        if (!(await hasDurableArticleChanges(job.worktreePath!))) {
+        const requiredArtifactPrefix = job.jobType === "daily_news" ? "11_Daily/" : job.jobType === "daily_forecast" ? "12_Forecasting/" : "10_Published/";
+        if (!(await hasDurableArticleChanges(job.worktreePath!, job.baseCommit, requiredArtifactPrefix))) {
           throw new Error("Codex produced no durable EBE article artifacts outside ignored working/runtime paths.");
+        }
+
+        if (job.article) {
+          const workerArticles = new FilesystemArticleRepository(job.worktreePath!);
+          const reconciliation = await new ReconciliationService(job.worktreePath!, workerArticles, this.store).reconcileJob(job, job.article.sourcePath);
+          if (reconciliation?.reviewRequired) throw new Error(`Article reconciliation review required: ${reconciliation.message}`);
+          await new IndexService(job.worktreePath!, workerArticles).rebuildAll();
+          const completed = await workerArticles.getById(job.article.articleId);
+          if (completed?.autonomous?.candidateId) await new CandidateRegistry(path.join(job.worktreePath!, "canonical", "autonomous", "registry.json")).update(completed.autonomous.candidateId, { status: "generated", articleId: completed.id, jobId: job.id, lastAttemptAt: new Date().toISOString() });
         }
 
         const commitSha = await commitWorkerChanges(job);
@@ -137,18 +147,7 @@ export class WorkerPool {
           resultSummary: "Published to private repository.",
         });
         if (job.article) {
-          const articleId = job.article.articleId;
-          const sourcePath = await this.resolveCompletedArticlePath(job, pushedCommitSha);
-          const reconciliation = await new ReconciliationService(config.paths.vaultRoot, new FilesystemArticleRepository(config.paths.vaultRoot), this.store).reconcileJob(job, sourcePath);
-          if (reconciliation?.reviewRequired) throw new Error(`Article reconciliation review required: ${reconciliation.message}`);
-          const imageRepository = new FilesystemArticleRepository(config.paths.vaultRoot); const images = new ImageService(config.paths.vaultRoot, imageRepository); await images.migrate(false);
-          const indexService = new IndexService(config.paths.vaultRoot, imageRepository); await indexService.rebuildAll(); await new BuildService(config.paths.vaultRoot, imageRepository, indexService).build();
-          const canonicalSha = await publishCanonicalManagementState(); job = await this.store.update(job.id, { pushedCommitSha: canonicalSha, resultSummary: `Published article at ${pushedCommitSha}; canonical reconciliation at ${canonicalSha}.` });
-          const reconciledArticle = await new FilesystemArticleRepository(config.paths.vaultRoot).getById(articleId);
-          if (reconciledArticle?.autonomous?.candidateId) {
-            await new CandidateRegistry(path.join(config.paths.vaultRoot, "canonical", "autonomous", "registry.json")).update(reconciledArticle.autonomous.candidateId, { status: "generated", articleId: reconciledArticle.id, jobId: job.id, lastAttemptAt: new Date().toISOString() });
-            // The canonical image/index/build pipeline above also covers autonomous articles.
-          }
+          job = await this.store.update(job.id, { resultSummary: `Published article at ${pushedCommitSha}; canonical worker artifacts included.` });
         }
 
         if (config.autoDeploy.enabled && ["article", "daily_news", "daily_forecast", "image_maintenance"].includes(job.jobType ?? "article")) {
