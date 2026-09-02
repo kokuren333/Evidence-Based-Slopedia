@@ -205,6 +205,7 @@ export function createDiscordClient(
             safeSections(dryRun ? "cleanup dry-run targets:" : "cleanup completed:", [
               { label: "worktrees", items: cleaned.worktrees },
               { label: "jobs", items: cleaned.jobs },
+              { label: "job records", items: cleaned.jobRecords },
               { label: "logs", items: cleaned.logs },
             ]),
           ].join("\n"),

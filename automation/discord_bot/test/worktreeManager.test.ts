@@ -46,3 +46,18 @@ test("cleanup removes old succeeded job record and retained worktree", async () 
   await assert.rejects(fs.access(descriptor.worktreePath));
   assert.equal(await store.get(created.id), undefined);
 });
+
+test("cleanup removes old failed and failed_review_required records but keeps active jobs", async () => {
+  const store = new JobStore(path.join(fixture.root, "cleanup-status-jobs.json"));
+  const make = async (status: "failed" | "failed_review_required" | "cancelled" | "queued" | "running") => {
+    const job = await store.create({ query: status, mode: "new", discordUserId: "actor", channelId: "channel", guildId: null, model: "test", reasoningEffort: "low" });
+    return store.update(job.id, { status, finishedAt: "2000-01-01T00:00:00.000Z" });
+  };
+  const removable = await Promise.all([make("failed"), make("failed_review_required"), make("cancelled")]);
+  const retained = await Promise.all([make("queued"), make("running")]);
+  const pool = new WorkerPool(store, {} as never);
+  const cleaned = await pool.cleanupFailedWorktrees(1, false);
+  assert.equal(cleaned.jobRecords.length, 3);
+  for (const job of removable) assert.equal(await store.get(job.id), undefined);
+  for (const job of retained) assert.ok(await store.get(job.id));
+});
