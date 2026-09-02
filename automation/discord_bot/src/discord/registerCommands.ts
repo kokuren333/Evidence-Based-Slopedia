@@ -95,7 +95,7 @@ const commands = [
     ),
   new SlashCommandBuilder()
     .setName("job-cleanup")
-    .setDescription("Admin-only: list or remove old failed job worktrees.")
+    .setDescription("Admin-only: list or remove old succeeded/cancelled job records, logs, and worktrees.")
     .addIntegerOption((option) =>
       option.setName("older_than_days").setDescription("Only clean jobs older than this many days.").setRequired(false),
     )

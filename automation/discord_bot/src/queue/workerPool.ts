@@ -66,17 +66,16 @@ export class WorkerPool {
     const cutoff = Date.now() - olderThanDays * 24 * 60 * 60 * 1000;
     const allJobs = await this.store.all();
     const targets = allJobs.filter((job) => {
-      if (!["failed", "failed_review_required", "cancelled"].includes(job.status)) return false;
-      if (!job.worktreePath || !job.branchName) return false;
+      if (!["succeeded", "cancelled"].includes(job.status)) return false;
       const finishedAt = job.finishedAt ?? job.updatedAt;
       return new Date(finishedAt).getTime() <= cutoff;
     });
     const worktrees: string[] = []; const jobIds: string[] = []; const logs: string[] = [];
     for (const job of targets) {
-      worktrees.push(`${job.id}: ${job.worktreePath}`); jobIds.push(job.id);
+      if (job.worktreePath && job.branchName) worktrees.push(`${job.id}: ${job.worktreePath}`); jobIds.push(job.id);
       for (const file of await fs.readdir(config.paths.logDir).catch(() => [])) if (file.includes(job.id)) logs.push(path.join(config.paths.logDir, file));
       if (!dryRun) {
-        await removeWorktree(job.worktreePath!, job.branchName!).catch((error) =>
+        if (job.worktreePath && job.branchName) await removeWorktree(job.worktreePath, job.branchName).catch((error) =>
           writeJobLog(job.id, `cleanup failed: ${error instanceof Error ? error.message : String(error)}`),
         );
         for (const file of logs.filter((item) => item.includes(job.id))) await fs.rm(file, { force: true });

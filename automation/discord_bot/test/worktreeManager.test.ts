@@ -35,11 +35,11 @@ test("create external worktree, commit change, reject collision, and clean branc
   assert.equal(await git(fixture.vault, "branch", "--list", descriptor.branchName), "");
 });
 
-test("cleanupFailedWorktrees removes retained failed worktree and branch", async () => {
+test("cleanup removes old succeeded job record and retained worktree", async () => {
   const store = new JobStore(path.join(fixture.root, "cleanup-jobs.json"));
   const created = await store.create({ query: "cleanup", mode: "new", discordUserId: "actor", channelId: "channel", guildId: null, model: "test", reasoningEffort: "low" });
   const descriptor = await createWorktree({ ...created, status: "running" });
-  await store.update(created.id, { status: "failed", finishedAt: "2000-01-01T00:00:00.000Z", ...descriptor });
+  await store.update(created.id, { status: "succeeded", finishedAt: "2000-01-01T00:00:00.000Z", ...descriptor });
   const pool = new WorkerPool(store, {} as never);
   const cleaned = await pool.cleanupFailedWorktrees(1, false);
   assert.equal(cleaned.jobs.length, 1);
