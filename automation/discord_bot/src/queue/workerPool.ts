@@ -119,8 +119,8 @@ export class WorkerPool {
               : job.jobType === "daily_forecast"
                 ? "forecasting"
                 : (job.imageMaintenance?.scope ?? "all");
-          const targetArticlePaths = job.jobType === "article" && job.article
-            ? [job.article.sourcePath]
+          const targetArticlePaths = job.jobType === "article"
+            ? await changedPublishedArticlePaths(job.worktreePath!, job.baseCommit)
             : undefined;
           await assertArticleImagePaths(job.worktreePath!, scope, targetArticlePaths);
         }
@@ -256,6 +256,17 @@ export class WorkerPool {
       .filter((entry) => entry.startsWith("10_Published/") && entry.endsWith(".md") && !entry.endsWith("/_MOC.md"));
     return candidates.length === 1 ? candidates[0] : (await fs.access(path.join(job.worktreePath, job.article.sourcePath)).then(() => job.article!.sourcePath).catch(() => undefined));
   }
+}
+
+async function changedPublishedArticlePaths(cwd: string, baseCommit?: string): Promise<string[]> {
+  const args = ["-c", "core.quotepath=false", "diff", "--name-only", "--diff-filter=ACMR", "-z"];
+  const results = await Promise.all([
+    runGit(cwd, baseCommit ? [...args, baseCommit, "HEAD"] : [...args, "HEAD"]),
+    runGit(cwd, ["-c", "core.quotepath=false", "diff", "--name-only", "--diff-filter=ACMR", "-z"]),
+    runGit(cwd, ["-c", "core.quotepath=false", "ls-files", "--others", "--exclude-standard", "-z"]),
+  ]);
+  return [...new Set(results.flatMap((result) => result.stdout.split("\0")))].map((file) => file.replace(/\\/g, "/"))
+    .filter((file) => file.startsWith("10_Published/") && file.endsWith(".md") && !file.endsWith("/_MOC.md"));
 }
 
 async function assertCanonicalPublishReady(root: string, repository: FilesystemArticleRepository, articleId: string): Promise<void> {
