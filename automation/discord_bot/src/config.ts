@@ -113,6 +113,7 @@ export const config = {
   },
   autoDeploy: {
     enabled: boolEnv("EBS_AUTO_DEPLOY_ENABLED", false),
+    publicUrl: process.env.EBS_PAGES_PUBLIC_URL?.trim() || undefined,
   },
   autoGeneration: {
     enabled: boolEnv("EBS_AUTO_ENABLED", true), minIntervalMinutes: intEnv("EBS_AUTO_MIN_INTERVAL_MINUTES", 5), maxIntervalMinutes: intEnv("EBS_AUTO_MAX_INTERVAL_MINUTES", 10), maxPerHour: intEnv("EBS_AUTO_MAX_PER_HOUR", 6), maxPerDay: intEnv("EBS_AUTO_MAX_PER_DAY", 50),

@@ -36,10 +36,10 @@ test("directory deployment is atomic/no-op aware and backups verify/stage withou
   const backup = new BackupService(root); const manifest = await backup.create(); assert.equal((await backup.verify(manifest.id)).valid, true); const staged = await backup.stageRestore(manifest.id); assert.ok(await fs.stat(path.join(staged, "manifest.json"))); assert.ok(await repository.getById("art_DEPLOY"));
 });
 
-test("GitHub Pages directory deploy commits and pushes only when changed", async () => {
+test("GitHub Pages directory deploy commits and returns the actual Pages commit SHA", async () => {
   const fixture = await createGitFixture("ebs-pages-"); const dist = path.join(fixture.root, "dist"); await fs.mkdir(path.join(dist, "assets"), { recursive: true }); await fs.writeFile(path.join(dist, "index.html"), "new site\n");
-  const target = new DirectoryDeploymentTarget(fixture.vault); const changed = await target.deploy(dist, "hash-1"); assert.match(changed.message, /pushed origin\/main/); assert.equal(await git(fixture.vault, "status", "--porcelain"), ""); assert.match(await fs.readFile(path.join(fixture.seed, "README.md"), "utf8"), /fixture/);
-  const unchanged = await target.deploy(dist, "hash-1"); assert.match(unchanged.message, /no Pages repository changes/); assert.equal(await fs.stat(path.join(fixture.vault, ".git")) !== undefined, true);
+  const target = new DirectoryDeploymentTarget(fixture.vault); const changed = await target.deploy(dist, "hash-1"); assert.match(changed.message, /pushed origin\/main/); assert.match(changed.remoteRevision ?? "", /^[0-9a-f]{40}$/); assert.equal(changed.remoteRevision, (await git(fixture.vault, "rev-parse", "HEAD")).trim()); assert.equal(await git(fixture.vault, "status", "--porcelain"), ""); assert.match(await fs.readFile(path.join(fixture.seed, "README.md"), "utf8"), /fixture/);
+  const unchanged = await target.deploy(dist, "hash-1"); assert.match(unchanged.message, /no Pages repository changes/); assert.equal(unchanged.remoteRevision, changed.remoteRevision); assert.equal(await fs.stat(path.join(fixture.vault, ".git")) !== undefined, true);
 });
 
 test("GitHub Pages deploy reports push failure", async () => {

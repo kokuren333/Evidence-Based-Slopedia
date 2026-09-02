@@ -60,6 +60,8 @@ export interface Job extends CoreJob {
   baseCommit?: string;
   commitSha?: string;
   pushedCommitSha?: string;
+  pagesCommitSha?: string;
+  pagesUrl?: string;
   resultSummary?: string;
   model: string;
   reasoningEffort: string;

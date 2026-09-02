@@ -22,6 +22,7 @@ import { BuildService } from "../../../ebs/core/src/services/buildService.js";
 import { ImageService } from "../../../ebs/core/src/services/imageService.js";
 import { DeployService, GitHubPagesDeploymentTarget } from "../../../ebs/core/src/services/deployService.js";
 import { ContentService } from "../../../ebs/core/src/services/contentService.js";
+import { collectPublicArticles } from "../../../ebs/core/src/services/publicationPolicy.js";
 
 export class WorkerPool {
   private timer: NodeJS.Timeout | undefined;
@@ -139,7 +140,10 @@ export class WorkerPool {
           if (completed.status !== "published") {
             await content.publish(completed.id, { actor: "worker", origin: "publish-finalize", jobId: job.id });
           }
+          await assertCanonicalPublishReady(job.worktreePath!, workerArticles, completed.id);
           await new IndexService(job.worktreePath!, workerArticles).rebuildAll();
+          const indexed = (await collectPublicArticles(job.worktreePath!, workerArticles)).publicArticles.some(({ metadata }) => metadata.id === completed.id && metadata.slug === completed.slug);
+          if (!indexed) throw new Error(`Published article ${completed.id} was not registered in the public index.`);
           if (completed?.autonomous?.candidateId) {
             const workerRegistry = new CandidateRegistry(path.join(job.worktreePath!, "canonical", "autonomous", "registry.json"));
             const controlRegistry = new CandidateRegistry(path.join(config.paths.runtimeDir, "autonomous", "registry.json"));
@@ -166,6 +170,7 @@ export class WorkerPool {
           const deployment = new DeployService(config.paths.vaultRoot, new GitHubPagesDeploymentTarget(path.resolve(pagesDirectory)), config.paths.runtimeDir);
           const result = await deployment.deploy(false);
           if (result.result !== "succeeded") throw new Error(`Site deployment failed${result.error ? `: ${result.error}` : "."}`);
+          job = await this.store.update(job.id, { pagesCommitSha: result.remoteRevision, pagesUrl: config.autoDeploy.publicUrl });
         }
 
         await this.throwIfCancelled(job.id);
@@ -248,4 +253,13 @@ export class WorkerPool {
       .filter((entry) => entry.startsWith("10_Published/") && entry.endsWith(".md") && !entry.endsWith("/_MOC.md"));
     return candidates.length === 1 ? candidates[0] : (await fs.access(path.join(job.worktreePath, job.article.sourcePath)).then(() => job.article!.sourcePath).catch(() => undefined));
   }
+}
+
+async function assertCanonicalPublishReady(root: string, repository: FilesystemArticleRepository, articleId: string): Promise<void> {
+  const article = await repository.getById(articleId);
+  if (!article) throw new Error(`Canonical article metadata missing: ${articleId}`);
+  const source = path.join(root, article.sourcePath);
+  await fs.access(source);
+  if (article.status !== "published") throw new Error(`Canonical article is not published: ${article.status}`);
+  if (!(await repository.history(articleId)).length) throw new Error(`Canonical revision missing: ${articleId}`);
 }

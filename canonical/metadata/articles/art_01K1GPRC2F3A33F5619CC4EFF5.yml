@@ -1,0 +1,19 @@
+{
+  "id": "art_01K1GPRC2F3A33F5619CC4EFF5",
+  "type": "encyclopedia",
+  "title": "Transformerの仕組みとLLMとの関連",
+  "slug": "technology-engineering-computing-ai/machine-learning-ai-models/transformer-and-llms",
+  "status": "published",
+  "sourcePath": "10_Published/07_Technology_Engineering_Computing_AI/機械学習・AIモデル__machine-learning-ai-models/Transformerの仕組みとLLMとの関連__transformer-and-llms.md",
+  "createdAt": "2026-09-02T10:15:19.375Z",
+  "updatedAt": "2026-09-02T10:25:04.928Z",
+  "aliases": [],
+  "category": "技術・工学・コンピューティング・AI",
+  "subfield": "機械学習・AIモデル",
+  "image": {
+    "path": "50_Assets/Infographics/transformer-llm__infographic.webp",
+    "alt": "Transformerの仕組みとLLMとの関連"
+  },
+  "currentRevision": 1,
+  "contentHash": "7cfd72cc7414c21e162d6420c7f6b202468106c9ea8d9353e917980c3c5ec955"
+}

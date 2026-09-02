@@ -9,6 +9,7 @@
     "start": "node dist/discord_bot/src/index.js",
     "register": "tsx src/discord/registerCommands.ts",
     "build": "tsc -p tsconfig.json",
+    "admin": "node dist/discord_bot/src/admin.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "tsx --test test/**/*.test.ts",
     "ebs": "tsx ../ebs/cli/src/main.ts",
