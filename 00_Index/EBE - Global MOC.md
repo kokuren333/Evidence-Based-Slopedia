@@ -34,3 +34,6 @@
 - [[00_Index/EBE - Update Policy.md|EBE - Update Policy]]
 - [[00_Index/EBE - Artifact Lifecycle Policy.md|EBE - Artifact Lifecycle Policy]]
 - [[00_Index/EBE - Style Guide.md|EBE - Style Guide]]
+# GPUとグラフィックボードの定義の違い
+
+- [[../10_Published/07_Technology_Engineering_Computing_AI/コンピュータハードウェア__computer-hardware/GPUとグラフィックボードの定義の違い__gpu-vs-graphics-board]]
