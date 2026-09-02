@@ -46,7 +46,7 @@ export async function runCli(argv: string[], output = console): Promise<number> 
   const auto = new AutoGenerationService(new JsonJobRepository(path.join(dataDir, "jobs.json")), registry, discovery, content, { canStart: async () => ({ ok: true }), snapshot: async () => ({ ok: true, enabled: true, memoryPercent: 0, cpuPercent: 0 }) }, { maxPerHour: Number(process.env.EBS_AUTO_MAX_PER_HOUR ?? 6), maxPerDay: Number(process.env.EBS_AUTO_MAX_PER_DAY ?? 50), cooldownMinutes: [60, 360, 1440, 10080], circuitWindow: 10, circuitMaxFailures: 5, circuitCooldownMinutes: 60, languages: ["ja", "en"] });
   const scheduler = new SchedulerService(auto, registry, new FilesystemMutationLock(vaultRoot), { minIntervalMinutes: 5, maxIntervalMinutes: 10 });
   const images = new ImageService(vaultRoot, articleRepository);
-  const deployDirectory = process.env.EBS_GITHUB_PAGES_DIR; const deploy = new DeployService(vaultRoot, deployDirectory ? new GitHubPagesDeploymentTarget(path.resolve(deployDirectory)) : undefined); const backup = new BackupService(vaultRoot);
+const deployDirectory = process.env.EBS_GITHUB_PAGES_DIR; const runtimeRoot = path.resolve(process.env.EBE_BOT_RUNTIME_DIR ?? path.join(process.cwd(), "..", "..", "..", "discord_bot-runtime")); const deploy = new DeployService(vaultRoot, deployDirectory ? new GitHubPagesDeploymentTarget(path.resolve(deployDirectory)) : undefined, runtimeRoot); const backup = new BackupService(vaultRoot);
   const context = { actor: process.env.USERNAME ?? process.env.USER ?? "cli-user", origin: "cli" };
   try {
     if (args[0] === "auto") {
