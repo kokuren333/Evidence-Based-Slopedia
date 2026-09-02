@@ -154,6 +154,21 @@ Evidence-Based-Everything/
 
 worktree rootはVaultの外に置く。
 
+常駐サーバーでは、Vault、worker worktree、runtime state、Pages repositoryを分ける。
+
+```text
+C:\EBS\
+├─ Evidence-Based-Slopedia\        # EBE_VAULT_ROOT
+├─ Evidence-Based-Slopedia-Pages\ # EBS_GITHUB_PAGES_DIR（任意）
+├─ worktrees\                      # EBE_WORKTREE_ROOT
+└─ discord_bot-runtime\            # EBE_BOT_RUNTIME_DIR
+   ├─ data\                        # jobs.jsonなど
+   ├─ autonomous\                  # 自律候補registry
+   └─ logs\                        # job runtime log
+```
+
+runtime stateをVault内に置かないことが重要である。
+
 ```text
 良い例:
   C:\ebe-worktrees

@@ -125,6 +125,32 @@ npm run ebs -- deploy --json
 
 差分がない場合はno-opとして正常終了する。remoteとbranchは`EBS_PAGES_GIT_REMOTE`（既定値`origin`）、`EBS_PAGES_GIT_BRANCH`（既定値`main`）で変更できる。Pages用repositoryの`.git`は同期処理で保持される。本リポジトリはGitHub Actionsを使わず、常駐サーバーPCから直接deployする。
 
+### サーバーPCのディレクトリ構造
+
+Botを常駐させる場合、Vault本体、worker worktree、Botのruntime state、Pages公開用repositoryを分離する。
+
+```text
+C:\EBS\
+├─ Evidence-Based-Slopedia\        # EBE_VAULT_ROOT（source/Vault repository）
+├─ Evidence-Based-Slopedia-Pages\ # EBS_GITHUB_PAGES_DIR（任意）
+├─ worktrees\                      # EBE_WORKTREE_ROOT
+└─ discord_bot-runtime\            # EBE_BOT_RUNTIME_DIR
+   ├─ data\                        # jobs.jsonなど
+   ├─ autonomous\                  # 自律候補registry
+   └─ logs\                        # job runtime log
+```
+
+```env
+EBE_VAULT_ROOT=C:\EBS\Evidence-Based-Slopedia
+EBE_WORKTREE_ROOT=C:\EBS\worktrees
+EBS_GITHUB_PAGES_DIR=C:\EBS\Evidence-Based-Slopedia-Pages
+EBE_BOT_RUNTIME_DIR=C:\EBS\discord_bot-runtime
+EBE_BOT_DATA_DIR=C:\EBS\discord_bot-runtime\data
+EBE_BOT_LOG_DIR=C:\EBS\discord_bot-runtime\logs
+```
+
+`EBE_WORKTREE_ROOT`とruntime directoryはVaultの配下に置かない。Pages deployでは公開repository内の`.git`を保持し、`dist/`同期後に差分がある場合だけcommit/pushする。
+
 ### ソースと公開物の分離
 
 - source repository: 記事原稿、Evidence、Bot、設定、生成コードを管理する。
