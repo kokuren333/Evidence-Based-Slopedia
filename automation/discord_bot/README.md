@@ -219,9 +219,18 @@ GIT_BRANCH=main
 GIT_COMMIT_MESSAGE=article update
 GIT_BOT_USER_NAME=ebe-discord-bot
 GIT_BOT_USER_EMAIL=ebe-discord-bot@example.invalid
+
+# Optional Pages repository checkout. deploy syncs dist and pushes only when changed.
+EBS_GITHUB_PAGES_DIR=C:\\ebs\\Evidence-Based-Slopedia-Pages
+EBS_PAGES_GIT_REMOTE=origin
+EBS_PAGES_GIT_BRANCH=main
+EBS_PAGES_GIT_COMMIT_MESSAGE=deploy: update site
+EBS_PAGES_GIT_USER_NAME=ebs-pages-deployer
+EBS_PAGES_GIT_USER_EMAIL=ebs-pages-deployer@example.invalid
 ```
 
 `EBE_VAULT_ROOT` はこのVaultの絶対パス。`EBE_WORKTREE_ROOT` はworker用の外部ディレクトリ。
+`EBS_GITHUB_PAGES_DIR` はPages公開用repositoryをcloneした絶対パス。設定すると`deploy`が`dist/`を同期し、差分がある場合だけPages repositoryへcommit/pushする。
 
 ## インストールと起動
 

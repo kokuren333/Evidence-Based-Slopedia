@@ -103,18 +103,14 @@ npm run ebs -- rebuild --json
 
 `dist/`にはトップページ、記事ページ、検索用JSON、RSS、sitemap、CSSなどの配信可能なファイルが生成される。GitHub Pages、Cloudflare Pages、Netlify、Vercelなど、静的ファイルを配信できるサービスを想定する。
 
-GitHub Pagesへ手動配置する場合は、Pages用リポジトリを別ディレクトリにcloneし、`.env`で`EBS_GITHUB_PAGES_DIR`を指定してから実行する。
+GitHub Pagesへ配置する場合は、Pages用リポジトリを別ディレクトリにcloneし、`.env`で`EBS_GITHUB_PAGES_DIR`を指定する。deploy処理が`dist/`を同期し、Pages用repositoryの差分確認、commit、pushまで行う。
 
 ```powershell
 npm run ebs -- deploy --dry-run --json
 npm run ebs -- deploy --json
-cd $env:EBS_GITHUB_PAGES_DIR
-git add -A
-git commit -m "Deploy EBS site"
-git push
 ```
 
-本リポジトリには現在、GitHub Actionsによる自動Pagesデプロイは含まれていない。自動化する場合は、生成物専用のPagesリポジトリまたはPages用ブランチへdeployするWorkflowを別途追加する。
+差分がない場合はno-opとして正常終了する。remoteとbranchは`EBS_PAGES_GIT_REMOTE`（既定値`origin`）、`EBS_PAGES_GIT_BRANCH`（既定値`main`）で変更できる。Pages用repositoryの`.git`は同期処理で保持される。本リポジトリはGitHub Actionsを使わず、常駐サーバーPCから直接deployする。
 
 ### ソースと公開物の分離
 
