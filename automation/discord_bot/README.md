@@ -221,14 +221,14 @@ GIT_BOT_USER_NAME=ebe-discord-bot
 GIT_BOT_USER_EMAIL=ebe-discord-bot@example.invalid
 
 # Optional Pages repository checkout. deploy syncs dist and pushes only when changed.
-EBS_GITHUB_PAGES_DIR=C:\\ebs\\Evidence-Based-Slopedia-Pages
+EBS_GITHUB_PAGES_DIR=C:\\ebs\\your-pages-repository
 EBS_PAGES_GIT_REMOTE=origin
 EBS_PAGES_GIT_BRANCH=main
 EBS_PAGES_GIT_COMMIT_MESSAGE=deploy: update site
 EBS_PAGES_GIT_USER_NAME=ebs-pages-deployer
 EBS_PAGES_GIT_USER_EMAIL=ebs-pages-deployer@example.invalid
-EBS_SITE_BASE_PATH=/Evidence-Based-Slopedia-Pages/
-EBS_SITE_ORIGIN=https://kokuren333.github.io
+EBS_SITE_BASE_PATH=/your-pages-repository/
+EBS_SITE_ORIGIN=https://your-account.github.io
 ```
 
 `EBE_VAULT_ROOT` はこのVaultの絶対パス。`EBE_WORKTREE_ROOT` はworker用の外部ディレクトリ。
