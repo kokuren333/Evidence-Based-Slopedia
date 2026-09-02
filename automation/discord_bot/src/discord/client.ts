@@ -1,4 +1,4 @@
-import { Client, Events, GatewayIntentBits } from "discord.js";
+import { Client, Events, GatewayIntentBits, MessageFlags } from "discord.js";
 import { config } from "../config.js";
 import type { JobStore } from "../queue/jobStore.js";
 import type { WorkerPool } from "../queue/workerPool.js";
@@ -196,10 +196,11 @@ export function createDiscordClient(
         );
       } else if (interaction.commandName === "job-cleanup") {
         assertAdmin(interaction.user.id);
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
         const olderThanDays = interaction.options.getInteger("older_than_days") ?? 7;
         const dryRun = interaction.options.getBoolean("dry_run") ?? true;
         const cleaned = await getWorkerPool().cleanupFailedWorktrees(olderThanDays, dryRun);
-        await interaction.reply(
+        await interaction.editReply(
           [
             safeSections(dryRun ? "cleanup dry-run targets:" : "cleanup completed:", [
               { label: "worktrees", items: cleaned.worktrees },
@@ -279,10 +280,11 @@ export function createDiscordClient(
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       const body = ["Command failed.", "```text", message.slice(0, 1500), "```"].join("\n");
-      if (interaction.deferred || interaction.replied) {
-        await interaction.editReply(body);
-      } else {
-        await interaction.reply({ content: body, ephemeral: true });
+      try {
+        if (interaction.deferred || interaction.replied) await interaction.editReply(body);
+        else await interaction.reply({ content: body, flags: MessageFlags.Ephemeral });
+      } catch (responseError) {
+        console.error("Failed to send Discord interaction error response", { original: message, responseError });
       }
     }
   });
