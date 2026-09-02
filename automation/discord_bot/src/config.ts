@@ -1,8 +1,7 @@
 import dotenv from "dotenv";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 
-const botRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const botRoot = process.cwd();
 dotenv.config({ path: path.join(botRoot, ".env") });
 
 function env(name: string, fallback?: string): string {

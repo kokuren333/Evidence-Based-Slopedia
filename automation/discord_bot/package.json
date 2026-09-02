@@ -18,9 +18,11 @@
   "dependencies": {
     "discord.js": "^14.18.0",
     "dotenv": "^16.4.7",
-    "sharp": "^0.33.5"
+    "markdown-it": "^15.0.1",
+    "sharp": "^0.35.4"
   },
   "devDependencies": {
+    "@types/markdown-it": "^14.2.0",
     "@types/node": "^22.10.10",
     "tsx": "^4.19.2",
     "typescript": "^5.7.3"
