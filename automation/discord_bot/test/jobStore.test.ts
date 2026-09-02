@@ -54,6 +54,16 @@ test("cancel preserves queued and running behavior", async () => {
   assert.equal(requested.cancelRequested, true);
 });
 
+test("cancelled queued jobs are never returned to workers and removed jobs do not reappear", async () => {
+  const store = new JobStore(path.join(root, "delete-queue.json"));
+  const queued = await store.create({ query: "must not run", mode: "new", discordUserId: "test", channelId: "test", guildId: null, model: "test", reasoningEffort: "low" });
+  await store.cancel(queued.id);
+  assert.equal(await store.nextQueued(), undefined);
+  await store.remove(queued.id);
+  assert.equal(await store.get(queued.id), undefined);
+  assert.equal((await store.recoverInterruptedJobs()).length, 0);
+});
+
 test("retry creates a new queued job without modifying source", async () => {
   const store = new JobStore(path.join(root, "retry.json"));
   const source = await store.create(input("retry me"));

@@ -170,7 +170,8 @@ export class WorkerPool {
       }
       await this.notifier.jobSucceeded(job);
     } catch (error) {
-      const current = (await this.store.get(initialJob.id)) ?? job;
+      const current = await this.store.get(initialJob.id);
+      if (!current) return;
       const errorText = String(error);
       const failedStatus =
         errorText.toLowerCase().includes("cancelled") || errorText.toLowerCase().includes("aborted")
@@ -197,7 +198,7 @@ export class WorkerPool {
 
   private async throwIfCancelled(jobId: string): Promise<void> {
     const job = await this.store.get(jobId);
-    if (job?.cancelRequested) {
+    if (!job || job.status === "cancelled" || job.cancelRequested) {
       throw new Error("Job cancelled by administrator.");
     }
   }
