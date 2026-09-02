@@ -19,6 +19,7 @@ import { CandidateRegistry } from "../../../ebs/core/src/services/candidateRegis
 import { IndexService } from "../../../ebs/core/src/services/indexService.js";
 import { BuildService } from "../../../ebs/core/src/services/buildService.js";
 import { ImageService } from "../../../ebs/core/src/services/imageService.js";
+import { DeployService, GitHubPagesDeploymentTarget } from "../../../ebs/core/src/services/deployService.js";
 
 export class WorkerPool {
   private timer: NodeJS.Timeout | undefined;
@@ -150,6 +151,18 @@ export class WorkerPool {
             await new CandidateRegistry(path.join(config.paths.vaultRoot, "canonical", "autonomous", "registry.json")).update(reconciledArticle.autonomous.candidateId, { status: "generated", articleId: reconciledArticle.id, jobId: job.id, lastAttemptAt: new Date().toISOString() });
             // The canonical image/index/build pipeline above also covers autonomous articles.
           }
+        }
+
+        if (config.autoDeploy.enabled && ["article", "daily_news", "daily_forecast", "image_maintenance"].includes(job.jobType ?? "article")) {
+          const pagesDirectory = process.env.EBS_GITHUB_PAGES_DIR;
+          if (!pagesDirectory) throw new Error("Automatic deployment is enabled but EBS_GITHUB_PAGES_DIR is not configured.");
+          const repository = new FilesystemArticleRepository(config.paths.vaultRoot);
+          const indexes = new IndexService(config.paths.vaultRoot, repository);
+          await indexes.rebuildAll();
+          await new BuildService(config.paths.vaultRoot, repository, indexes).build();
+          const deployment = new DeployService(config.paths.vaultRoot, new GitHubPagesDeploymentTarget(path.resolve(pagesDirectory)));
+          const result = await deployment.deploy(false);
+          job = await this.store.update(job.id, { resultSummary: `${job.resultSummary ?? "Published"} Site deployment: ${result.result}${result.error ? ` (${result.error})` : ""}.` });
         }
 
         if (!config.workers.keepSuccessfulWorktrees && job.worktreePath && job.branchName) {
