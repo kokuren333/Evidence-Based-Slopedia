@@ -238,7 +238,11 @@ export class WorkerPool {
 
   private async resolveWorkerArticlePath(job: Job): Promise<string | undefined> {
     if (!job.worktreePath || !job.article) return undefined;
-    const diff = await runGit(job.worktreePath, ["diff", "--name-only", job.baseCommit, "HEAD"]);
+    const baseCommit = job.baseCommit;
+    if (!baseCommit) {
+      throw new Error(`Missing baseCommit for job ${job.id}`);
+    }
+    const diff = await runGit(job.worktreePath, ["diff", "--name-only", baseCommit, "HEAD"]);
     if (diff.code !== 0) return undefined;
     const candidates = diff.stdout.split(/\r?\n/).map((entry) => entry.trim().replace(/\\/g, "/"))
       .filter((entry) => entry.startsWith("10_Published/") && entry.endsWith(".md") && !entry.endsWith("/_MOC.md"));
