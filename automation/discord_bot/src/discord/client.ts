@@ -14,6 +14,7 @@ import type { CreateJobInput } from "../types.js";
 import type { JobService } from "../../../ebs/core/src/services/jobService.js";
 import type { AutoGenerationService } from "../../../ebs/core/src/services/autoGenerationService.js";
 import type { SchedulerService } from "../../../ebs/core/src/services/schedulerService.js";
+import { safeListOutput, safeSections } from "../services/discordOutput.js";
 
 export function createDiscordClient(
   store: JobStore,
@@ -200,13 +201,16 @@ export function createDiscordClient(
         const cleaned = await getWorkerPool().cleanupFailedWorktrees(olderThanDays, dryRun);
         await interaction.reply(
           [
-            dryRun ? "cleanup dry-run targets:" : "cleanup completed:",
-            cleaned.jobs.length ? ["```text", `worktrees (${cleaned.worktrees.length}):`, ...cleaned.worktrees.slice(0, 25), `jobs (${cleaned.jobs.length}):`, ...cleaned.jobs.slice(0, 25), `logs (${cleaned.logs.length}):`, ...cleaned.logs.slice(0, 25), "```"].join("\n") : "No matching terminal jobs.",
+            safeSections(dryRun ? "cleanup dry-run targets:" : "cleanup completed:", [
+              { label: "worktrees", items: cleaned.worktrees },
+              { label: "jobs", items: cleaned.jobs },
+              { label: "logs", items: cleaned.logs },
+            ]),
           ].join("\n"),
         );
       } else if (interaction.commandName === "job-list") {
         const jobs = await jobService.list(50);
-        await interaction.reply(jobs.length ? jobs.map(formatJobLine).join("\n") : "No jobs yet.");
+        await interaction.reply(safeListOutput(`Latest jobs (${jobs.length} shown, max 50):`, jobs.map(formatJobLine)));
       } else if (interaction.commandName === "worker-list") {
         const workers = getWorkerPool().listActiveWorkers();
         await interaction.reply(
