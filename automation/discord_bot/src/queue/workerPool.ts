@@ -157,7 +157,7 @@ export class WorkerPool {
           const indexes = new IndexService(config.paths.vaultRoot, repository);
           await indexes.rebuildAll();
           await new BuildService(config.paths.vaultRoot, repository, indexes).build();
-          const deployment = new DeployService(config.paths.vaultRoot, new GitHubPagesDeploymentTarget(path.resolve(pagesDirectory)));
+          const deployment = new DeployService(config.paths.vaultRoot, new GitHubPagesDeploymentTarget(path.resolve(pagesDirectory)), config.paths.runtimeDir);
           const result = await deployment.deploy(false);
           job = await this.store.update(job.id, { resultSummary: `${job.resultSummary ?? "Published"} Site deployment: ${result.result}${result.error ? ` (${result.error})` : ""}.` });
         }
