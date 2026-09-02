@@ -66,6 +66,8 @@ EBEの成果物はライフサイクルで分ける。`_working/` は未公開�
 
 ## Discord Bot Automation
 
+責務分離とvalidationの配置は [`docs/ARCHITECTURE-AUDIT.md`](docs/ARCHITECTURE-AUDIT.md) にまとめている。
+
 このリポジトリには、DiscordのSlash CommandからEBS記事生成・一括記事生成・運用コマンドを実行するBot実装が含まれている。
 
 ```text
