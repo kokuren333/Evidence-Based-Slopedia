@@ -31,6 +31,10 @@ This Skill inherits all rules in `.agents/skills/EBE-SHARED-CONTRACT.md`: autono
 4. キャプション引用番号を記録する。
 5. 禁止事項に、SVG/vector/code-nativeだけでなく、PIL、matplotlib、PowerPoint、スクリーンショット、手描きコード生成PNGの使用禁止を明記する。
 
+## Aspect Ratio Requirement
+
+画像生成プロンプトには、横長16:9（アスペクト比1.777:1）とカード表示用の安全な余白を必ず指定する。正方形・縦長・極端な横長は不可。
+
 ## Must Not
 
 - SVG、HTML、Mermaid、ASCII、PIL、matplotlib、PowerPoint、スクリーンショット、コード生成PNGなどの代替を許可しない。

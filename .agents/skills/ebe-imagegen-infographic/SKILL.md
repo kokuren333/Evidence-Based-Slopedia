@@ -35,6 +35,10 @@ briefに基づき、publish記事用の日本語ラスターインフォグラ�
 8. 記事に `![[50_Assets/Infographics/{{slug}}_infographic.png]]` を挿入する。
 9. ラスター形式、ラベル可読性、根拠との一致を確認する。
 
+## Aspect Ratio Requirement
+
+生成プロンプトには横長16:9（アスペクト比1.777:1）とカード表示用の安全余白を必ず含める。生成後に実画像の寸法を検査し、16:9から大きく外れた画像は再生成または不合格とする。
+
 ## Must Not
 
 - SVG/vector/code-native図解をpublish用に使わない。

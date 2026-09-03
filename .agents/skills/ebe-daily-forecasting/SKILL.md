@@ -141,6 +141,10 @@ Use this block at the end:
 - [[lucky-action|今日の開運アクション]]
 ```
 
+## Image Aspect Ratio Requirement
+
+画像生成プロンプトには横長16:9（アスペクト比1.777:1）と安全な余白を必ず指定する。16:9から大きく外れた出力は再生成または不合格とする。
+
 ## Forecasting Publish Gate
 
 Do not save under `12_Forecasting/daily/` unless all conditions pass:

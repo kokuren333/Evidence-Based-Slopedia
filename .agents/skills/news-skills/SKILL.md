@@ -109,6 +109,10 @@ Insert the image at the top of the article with an Obsidian embed. Log the origi
 
 Do not substitute SVG, Mermaid, HTML/CSS, Canvas, matplotlib, PowerPoint, or screenshots for the publish infographic.
 
+## Image Aspect Ratio Requirement
+
+画像生成プロンプトには横長16:9（アスペクト比1.777:1）と安全な余白を必ず指定する。16:9から大きく外れた出力は再生成または不合格とする。
+
 ## Daily Publish Gate
 
 Do not save under `11_Daily/` unless all conditions pass:
