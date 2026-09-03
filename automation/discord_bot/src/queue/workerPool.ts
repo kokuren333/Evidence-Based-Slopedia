@@ -1,7 +1,6 @@
 import { config } from "../config.js";
 import path from "node:path";
 import fs from "node:fs/promises";
-import { commitWorkerChanges, publishWorkerBranch } from "../runners/gitPublisher.js";
 import { removeUnresolvedImageReferences } from "../runners/imagePathChecker.js";
 import { assertMocIntegrity } from "../runners/mocIntegrityChecker.js";
 import { hasDurableArticleChanges } from "../runners/publishGateChecker.js";
@@ -10,11 +9,13 @@ import { createWorktree, removeWorktree } from "../runners/workspaceManager.js";
 import { canStartWorker } from "../services/resourceGuard.js";
 import { writeJobLog } from "../services/logWriter.js";
 import type { Job } from "../types.js";
+import type { JobPhase } from "../../../ebs/core/src/domain/job.js";
 import type { JobStore } from "./jobStore.js";
 import type { Notifier } from "../services/notifier.js";
 import { WorkerSupervisor } from "../../../ebs/core/src/services/workerSupervisor.js";
 import { FilesystemArticleRepository } from "../../../ebs/core/src/infrastructure/filesystemArticleRepository.js";
 import { ReconciliationService } from "../../../ebs/core/src/services/reconciliationService.js";
+import { promoteGeneratedContent } from "../services/contentPromotion.js";
 import { runGit } from "../utils/shell.js";
 import { CandidateRegistry } from "../../../ebs/core/src/services/candidateRegistry.js";
 import { IndexService } from "../../../ebs/core/src/services/indexService.js";
@@ -23,6 +24,8 @@ import { ImageService } from "../../../ebs/core/src/services/imageService.js";
 import { DeployService, GitHubPagesDeploymentTarget } from "../../../ebs/core/src/services/deployService.js";
 import { ContentService } from "../../../ebs/core/src/services/contentService.js";
 import { collectPublicArticles } from "../../../ebs/core/src/services/publicationPolicy.js";
+import { isArticleSource } from "../../../ebs/core/src/infrastructure/contentPaths.js";
+import { parseFrontmatter } from "../../../ebs/core/src/migration/articleInventory.js";
 
 export class WorkerPool {
   private timer: NodeJS.Timeout | undefined;
@@ -81,8 +84,7 @@ export class WorkerPool {
         if (job.worktreePath && job.branchName) await removeWorktree(job.worktreePath, job.branchName).catch((error) =>
           writeJobLog(job.id, `cleanup failed: ${error instanceof Error ? error.message : String(error)}`),
         );
-        for (const file of jobLogs) await fs.rm(file, { force: true });
-        await this.store.remove(job.id);
+        await this.store.update(job.id, { cleanupResult: { worktreeRemoved: Boolean(job.worktreePath && job.branchName), logsRetained: jobLogs.length, jobRecordRetained: true } }).catch(() => undefined);
       }
     }
     return { worktrees, jobs: jobIds, logs, jobRecords };
@@ -90,6 +92,24 @@ export class WorkerPool {
 
   private async runJob(initialJob: Job): Promise<void> {
     let job = initialJob;
+    const phase = async <T>(name: string, action: () => Promise<T>): Promise<T> => {
+      const started = new Date().toISOString();
+      const phaseName = normalizePhase(name);
+      await this.store.update(initialJob.id, { currentPhase: phaseName, phaseStartedAt: started, contentRoot: config.paths.contentRoot, publicUrl: config.autoDeploy.publicUrl }).catch(() => undefined);
+      await writeJobLog(initialJob.id, JSON.stringify({ type: "job.phase.started", phase: phaseName, timestamp: started, contentRoot: config.paths.contentRoot })).catch(() => undefined);
+      try {
+        const result = await action();
+        const completed = new Date().toISOString();
+        await this.store.update(initialJob.id, { currentPhase: phaseName, lastSuccessfulPhase: phaseName, phaseCompletedAt: completed }).catch(() => undefined);
+        await writeJobLog(initialJob.id, JSON.stringify({ type: "job.phase.succeeded", phase: phaseName, timestamp: completed, result: phaseResult(result) })).catch(() => undefined);
+        return result;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error); const failedAt = new Date().toISOString();
+        await this.store.update(initialJob.id, { currentPhase: phaseName, failedAt, errorCode: errorCode(message), errorMessage: message, errorDetails: message, retryable: true }).catch(() => undefined);
+        await writeJobLog(initialJob.id, JSON.stringify({ type: "job.phase.failed", phase: phaseName, timestamp: failedAt, errorCode: errorCode(message), error: message })).catch(() => undefined);
+        throw error;
+      }
+    };
     try {
       await this.notifier.jobStarted(job, this.supervisor.listActiveWorkers().length, config.workers.maxWorkers);
       await this.throwIfCancelled(job.id);
@@ -130,7 +150,12 @@ export class WorkerPool {
           throw new Error("Codex produced no durable EBE article artifacts outside ignored working/runtime paths.");
         }
 
-        if (job.article) {
+        if (job.jobType === "article" && job.mode === "new" && !job.article) {
+          const canonical = await phase("canonicalizing", () => canonicalizeNewArticle(job));
+          job = await this.store.update(job.id, { article: canonical, canonicalized: true });
+        }
+
+        if (job.article && !job.canonicalized) {
           const workerArticles = new FilesystemArticleRepository(job.worktreePath!, { eventsFile: config.paths.managementEventsFile });
           const completedSourcePath = await this.resolveWorkerArticlePath(job);
           if (!completedSourcePath) throw new Error("Published article source could not be identified in worker changes.");
@@ -156,28 +181,33 @@ export class WorkerPool {
           }
         }
 
-        const commitSha = await commitWorkerChanges(job);
-        job = await this.store.update(job.id, { status: "waiting_publish", commitSha });
-        await writeJobLog(job.id, `Worker commit ${commitSha}`);
+        const promotionPaths = await changedContentPaths(job.worktreePath!, job.baseCommit);
+        await writeJobLog(job.id, JSON.stringify({ phase: "promotion", event: "targets", timestamp: new Date().toISOString(), paths: promotionPaths }));
+        await promoteGeneratedContent(job.worktreePath!, config.paths.contentRoot, promotionPaths);
+        await writeJobLog(job.id, JSON.stringify({ phase: "promotion", event: "succeeded", timestamp: new Date().toISOString(), targetCount: promotionPaths.length }));
 
+        await writeJobLog(job.id, JSON.stringify({ phase: "source_git", event: "skipped", timestamp: new Date().toISOString(), reason: "content-only job; ContentRoot is canonical" }));
+        job = await this.store.update(job.id, { status: "waiting_publish" });
         await this.throwIfCancelled(job.id);
         job = await this.store.update(job.id, { status: "publishing" });
-        const pushedCommitSha = await publishWorkerBranch(job);
         if (config.autoDeploy.enabled && ["article", "daily_news", "daily_forecast", "image_maintenance"].includes(job.jobType ?? "article")) {
+          await writeJobLog(job.id, JSON.stringify({ phase: "deploy_config", event: "resolved", timestamp: new Date().toISOString(), autoDeploy: config.autoDeploy.enabled, pagesDirectory: process.env.EBS_GITHUB_PAGES_DIR, vaultRoot: config.paths.vaultRoot }));
           const pagesDirectory = process.env.EBS_GITHUB_PAGES_DIR;
           if (!pagesDirectory) throw new Error("Automatic deployment is enabled but EBS_GITHUB_PAGES_DIR is not configured.");
-          const repository = new FilesystemArticleRepository(config.paths.vaultRoot, { eventsFile: config.paths.managementEventsFile });
-          const indexes = new IndexService(config.paths.vaultRoot, repository);
-          await indexes.rebuildAll();
-          await new BuildService(config.paths.vaultRoot, repository, indexes, { basePath: process.env.EBS_SITE_BASE_PATH ?? "/", origin: process.env.EBS_SITE_ORIGIN }).build();
-          const deployment = new DeployService(config.paths.vaultRoot, new GitHubPagesDeploymentTarget(path.resolve(pagesDirectory)), config.paths.runtimeDir);
-          const result = await deployment.deploy(false);
+          const repository = new FilesystemArticleRepository(config.paths.contentRoot, { eventsFile: path.join(config.paths.runtimeDir, "content-management-events.jsonl") });
+          const indexes = new IndexService(config.paths.contentRoot, repository);
+          await phase("rebuild", () => indexes.rebuildAll());
+          await phase("dist_build_and_validation", () => new BuildService(config.paths.contentRoot, repository, indexes, { basePath: process.env.EBS_SITE_BASE_PATH ?? "/", origin: process.env.EBS_SITE_ORIGIN }, config.paths.contentRoot).build());
+          const deployment = new DeployService(config.paths.contentRoot, new GitHubPagesDeploymentTarget(path.resolve(pagesDirectory)), config.paths.runtimeDir);
+          const result = await phase("pages_sync_commit_push", () => deployment.deploy(false));
           if (result.result !== "succeeded") throw new Error(`Site deployment failed${result.error ? `: ${result.error}` : "."}`);
+          if (!result.remoteRevision || !/^[0-9a-f]{40}$/.test(result.remoteRevision)) throw new Error("Pages deployment returned no verified commit SHA.");
+          await writeJobLog(job.id, JSON.stringify({ phase: "pages_sync_commit_push", event: "verified", timestamp: new Date().toISOString(), repository: path.resolve(pagesDirectory), commitSha: result.remoteRevision }));
           job = await this.store.update(job.id, { pagesCommitSha: result.remoteRevision, pagesUrl: config.autoDeploy.publicUrl });
         }
 
         await this.throwIfCancelled(job.id);
-        job = await this.store.update(job.id, { status: "succeeded", pushedCommitSha, finishedAt: new Date().toISOString(), resultSummary: `Published article at ${pushedCommitSha}; rebuild and deployment completed.` });
+        job = await this.store.update(job.id, { status: "succeeded", finishedAt: new Date().toISOString(), resultSummary: job.pagesCommitSha ? `Published to Pages at ${job.pagesCommitSha}; rebuild and deployment completed.` : "Content generated; deployment was not enabled." });
 
         if (!config.workers.keepSuccessfulWorktrees && job.worktreePath && job.branchName) {
           await removeWorktree(job.worktreePath, job.branchName);
@@ -207,8 +237,8 @@ export class WorkerPool {
       if (updated.article && current.worktreePath) {
         try {
           await fs.access(current.worktreePath);
-          const articles = new FilesystemArticleRepository(current.worktreePath, { eventsFile: config.paths.managementEventsFile });
-          await new ReconciliationService(current.worktreePath, articles, this.store).reconcileJob(updated).catch(() => undefined);
+          const articles = new FilesystemArticleRepository(config.paths.contentRoot, { eventsFile: path.join(config.paths.runtimeDir, "content-management-events.jsonl") });
+          await new ReconciliationService(config.paths.contentRoot, articles, this.store).reconcileJob(updated).catch(() => undefined);
           const failedArticle = await articles.getById(updated.article.articleId);
           if (failedArticle?.autonomous?.candidateId) {
             const workerRegistry = new CandidateRegistry(path.join(current.worktreePath, "canonical", "autonomous", "registry.json"));
@@ -241,7 +271,7 @@ export class WorkerPool {
     if (!job.article) return undefined;
     try { await import("node:fs/promises").then((fs) => fs.access(path.join(config.paths.vaultRoot, job.article!.sourcePath))); return job.article.sourcePath; } catch { /* discover newly selected EBE path */ }
     const diff = await runGit(config.paths.vaultRoot, ["diff", "--name-only", `${pushedCommitSha}^1`, pushedCommitSha]);
-    if (diff.code !== 0) return undefined; const candidates = diff.stdout.split(/\r?\n/).map((entry) => entry.trim().replace(/\\/g, "/")).filter((entry) => entry.startsWith("10_Published/") && entry.endsWith(".md") && !entry.endsWith("/_MOC.md")); return candidates.length === 1 ? candidates[0] : undefined;
+    if (diff.code !== 0) return undefined; const candidates = diff.stdout.split(/\r?\n/).map((entry) => entry.trim().replace(/\\/g, "/")).filter((entry) => entry.startsWith("10_Published/") && isArticleSource(entry)); return candidates.length === 1 ? candidates[0] : undefined;
   }
 
   private async resolveWorkerArticlePath(job: Job): Promise<string | undefined> {
@@ -253,11 +283,23 @@ export class WorkerPool {
     const diff = await runGit(job.worktreePath, ["diff", "--name-only", baseCommit, "HEAD"]);
     if (diff.code !== 0) return undefined;
     const candidates = diff.stdout.split(/\r?\n/).map((entry) => entry.trim().replace(/\\/g, "/"))
-      .filter((entry) => entry.startsWith("10_Published/") && entry.endsWith(".md") && !entry.endsWith("/_MOC.md"));
+      .filter((entry) => entry.startsWith("10_Published/") && isArticleSource(entry));
     return candidates.length === 1 ? candidates[0] : (await fs.access(path.join(job.worktreePath, job.article.sourcePath)).then(() => job.article!.sourcePath).catch(() => undefined));
   }
 }
 
+function normalizePhase(name: string): JobPhase { const value: Record<string, JobPhase> = { source_git: "validating", deploy_config: "deploying", rebuild: "rebuilding", dist_build_and_validation: "building", pages_sync_commit_push: "deploying", promotion: "promoting" }; return value[name] ?? (name as JobPhase); }
+function errorCode(message: string): string { if (/source.*metadata|hash mismatch/i.test(message)) return "ARTICLE_METADATA_SOURCE_MISMATCH"; if (/missing.*HTML/i.test(message)) return "DEPLOYMENT_VALIDATION_FAILED"; if (/cancel/i.test(message)) return "JOB_CANCELLED"; return "JOB_PHASE_FAILED"; }
+
+function phaseResult(value: unknown): unknown {
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    return { result: record.result, remoteRevision: record.remoteRevision, articleCount: record.articleCount };
+  }
+  return typeof value === "string" ? value : undefined;
+}
+
+/** Promote only a successfully validated temporary worktree into canonical ContentRoot. */
 async function changedPublishedArticlePaths(cwd: string, baseCommit?: string): Promise<string[]> {
   const args = ["-c", "core.quotepath=false", "diff", "--name-only", "--diff-filter=ACMR", "-z"];
   const results = await Promise.all([
@@ -266,7 +308,23 @@ async function changedPublishedArticlePaths(cwd: string, baseCommit?: string): P
     runGit(cwd, ["-c", "core.quotepath=false", "ls-files", "--others", "--exclude-standard", "-z"]),
   ]);
   return [...new Set(results.flatMap((result) => result.stdout.split("\0")))].map((file) => file.replace(/\\/g, "/"))
-    .filter((file) => file.startsWith("10_Published/") && file.endsWith(".md") && !file.endsWith("/_MOC.md"));
+    .filter((file) => file.startsWith("10_Published/") && isArticleSource(file));
+}
+
+async function changedContentPaths(cwd: string, baseCommit?: string): Promise<string[]> {
+  const args = ["-c", "core.quotepath=false", "diff", "--name-only", "--diff-filter=ACMR", "-z"];
+  const results = await Promise.all([
+    baseCommit
+      ? runGit(cwd, [...args, baseCommit, "HEAD"])
+      : runGit(cwd, [...args, "HEAD"]),
+    runGit(cwd, [...args]),
+    runGit(cwd, ["-c", "core.quotepath=false", "ls-files", "--others", "-z"]),
+  ]);
+  const allowed = ["10_Published/", "11_Daily/", "12_Forecasting/", "50_Assets/", "canonical/metadata/", "canonical/revisions/"];
+  return [...new Set(results.flatMap((result) => result.stdout.split("\0")))]
+    .filter(Boolean)
+    .map((file) => file.replace(/\\/g, "/"))
+    .filter((file) => allowed.some((root) => file.startsWith(root)));
 }
 
 async function assertCanonicalPublishReady(root: string, repository: FilesystemArticleRepository, articleId: string): Promise<void> {
@@ -276,4 +334,20 @@ async function assertCanonicalPublishReady(root: string, repository: FilesystemA
   await fs.access(source);
   if (article.status !== "published") throw new Error(`Canonical article is not published: ${article.status}`);
   if (!(await repository.history(articleId)).length) throw new Error(`Canonical revision missing: ${articleId}`);
+}
+
+async function canonicalizeNewArticle(job: Job): Promise<NonNullable<Job["article"]>> {
+  const sourcePath = await changedPublishedArticlePaths(job.worktreePath!, job.baseCommit);
+  if (sourcePath.length !== 1) throw new Error(`NEW_ARTICLE_IDENTITY_AMBIGUOUS: expected one article source, found ${sourcePath.length}`);
+  const relative = sourcePath[0];
+  const body = await fs.readFile(path.join(job.worktreePath!, relative), "utf8");
+  const frontmatter = parseFrontmatter(body);
+  const title = String(frontmatter.title ?? "").trim();
+  const slug = String(frontmatter.slug ?? relative.split("/").pop()?.replace(/\.md$/i, "").split("__").at(-1) ?? "").trim();
+  if (!title || !slug || slug.includes("\\") || slug.startsWith("/") || slug.includes("..")) throw new Error("NEW_ARTICLE_IDENTITY_INVALID: title and safe slug are required");
+  const workerRepository = new FilesystemArticleRepository(job.worktreePath!, { eventsFile: path.join(job.worktreePath!, "canonical", "events", "management-events.jsonl") });
+  const content = new ContentService(job.worktreePath!, workerRepository);
+  const article = await content.create({ title, slug, category: String(frontmatter.category_name ?? frontmatter.category ?? ""), subfield: String(frontmatter.subfield_name ?? frontmatter.subfield ?? ""), sourcePath: relative, context: { actor: "worker", origin: "canonicalization", jobId: job.id } });
+  const published = await content.publish(article.id, { actor: "worker", origin: "canonicalization", jobId: job.id });
+  return { articleId: published.id, operation: "create", sourcePath: published.sourcePath, title: published.title, slug: published.slug, contentHash: published.contentHash, revision: published.currentRevision };
 }

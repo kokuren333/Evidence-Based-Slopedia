@@ -28,7 +28,7 @@ export class BuildService {
   }
 
   async build(articleId?: string): Promise<BuildResult> {
-    return this.lock.withLock("global-dist", async () => {
+    return this.lock.withLock("content-build-deploy", async () => {
       const { publicArticles } = await collectPublicArticles(this.vaultRoot, this.repository);
       for (const article of publicArticles) assertMathNotation(article.body, article.metadata.id);
       if (articleId && !publicArticles.some((item) => item.metadata.id === articleId)) throw new Error(`Public article not found: ${articleId}`);
