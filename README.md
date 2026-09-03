@@ -159,6 +159,11 @@ EBE_BOT_DATA_DIR=C:\EBS\discord_bot-runtime\data
 EBE_BOT_LOG_DIR=C:\EBS\discord_bot-runtime\logs
 ```
 
+`EBS_PAGES_PUBLIC_URL` belongs only in the local Bot `.env`; do not commit it.
+Keep `jobs.json` and logs in the external runtime directory rather than in the
+Vault checkout. See `automation/discord_bot/README.md` for Windows startup
+details.
+
 `EBE_WORKTREE_ROOT`とruntime directoryはVaultの配下に置かない。Pages deployでは公開repository内の`.git`を保持し、`dist/`同期後に差分がある場合だけcommit/pushする。
 
 ### ソースと公開物の分離

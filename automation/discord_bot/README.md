@@ -33,6 +33,18 @@ non-interactive tasks may not inherit them. After source or configuration
 changes, run `npm run build` and restart the bot; `npm start` executes `dist/`,
 not TypeScript source directly. Never commit `.env` or credentials.
 
+Keep mutable Bot state outside the Vault checkout. On the server, configure:
+
+```env
+EBE_BOT_RUNTIME_DIR=C:\ebs\discord_bot-runtime
+EBE_BOT_DATA_DIR=C:\ebs\discord_bot-runtime\data
+EBE_BOT_LOG_DIR=C:\ebs\discord_bot-runtime\logs
+EBE_BOT_MANAGEMENT_EVENTS_FILE=C:\ebs\discord_bot-runtime\management-events.jsonl
+```
+
+Create the `data` and `logs` directories before the first start. This keeps
+`jobs.json` and runtime logs out of the source worktree.
+
 Evidence Based Slopedia（EBS）をDiscordから操作するためのBotである。DiscordのSlash Commandから記事生成、複数記事の一括キュー投入、日次ニュース作成、MOC整備、Git状態確認、VaultルートでのCodex実行を行える。
 
 ## できること
