@@ -90,11 +90,11 @@ export async function enqueueDailyForecastJobs(
     jobs.push(job);
   }
 
-  const skippedCount = plans.length - plansToQueue.length;
+  const skippedDetails = plans.filter((plan) => !plansToQueue.includes(plan)).map((plan) => { const active = existingJobs.find((job) => job.forecast?.targetPath === plan.targetPath); const reasons = [existingFiles.has(plan.targetPath) ? "existing_file" : undefined, active ? `active_job:${active.id}` : undefined].filter(Boolean); return `${plan.forecast.slug}=${reasons.join(",")}`; });
   return {
     date,
     jobs,
-    skippedReason: skippedCount > 0 ? `Skipped ${skippedCount} types with existing files or active jobs.` : undefined,
+    skippedReason: skippedDetails.length > 0 ? `Skipped ${skippedDetails.length} types: ${skippedDetails.join("; ")}.` : undefined,
   };
 }
 

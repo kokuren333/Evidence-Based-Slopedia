@@ -94,11 +94,11 @@ export async function enqueueDailyNewsJobs(
     });
     jobs.push(job);
   }
-  const skippedCount = fieldPlans.length - plansToQueue.length;
+  const skippedDetails = fieldPlans.filter((plan) => !plansToQueue.includes(plan)).map((plan) => { const active = existingJobs.find((job) => job.daily?.targetPath === plan.targetPath); const reasons = [existingFiles.has(plan.targetPath) ? "existing_file" : undefined, active ? `active_job:${active.id}` : undefined].filter(Boolean); return `${plan.newsField.slug}=${reasons.join(",")}`; });
   return {
     date,
     jobs,
-    skippedReason: skippedCount > 0 ? `Skipped ${skippedCount} fields with existing files or active jobs.` : undefined,
+    skippedReason: skippedDetails.length > 0 ? `Skipped ${skippedDetails.length} fields: ${skippedDetails.join("; ")}.` : undefined,
   };
 }
 
