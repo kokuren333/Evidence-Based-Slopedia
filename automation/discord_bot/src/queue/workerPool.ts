@@ -289,6 +289,14 @@ export class WorkerPool {
       .filter((entry) => entry.startsWith("10_Published/") && isArticleSource(entry));
     return candidates.length === 1 ? candidates[0] : (await fs.access(path.join(job.worktreePath, job.article.sourcePath)).then(() => job.article!.sourcePath).catch(() => undefined));
   }
+
+  private async enqueuePublication<T>(action: () => Promise<T>): Promise<T> {
+    const previous = this.publicationTail;
+    let release!: () => void;
+    this.publicationTail = new Promise<void>((resolve) => { release = resolve; });
+    await previous;
+    try { return await action(); } finally { release(); }
+  }
 }
 
 function normalizePhase(name: string): JobPhase { const value: Record<string, JobPhase> = { source_git: "validating", deploy_config: "deploying", rebuild: "rebuilding", dist_build_and_validation: "building", pages_sync_commit_push: "deploying", promotion: "promoting" }; return value[name] ?? (name as JobPhase); }
@@ -300,13 +308,6 @@ function phaseResult(value: unknown): unknown {
     return { result: record.result, remoteRevision: record.remoteRevision, articleCount: record.articleCount };
   }
 
-  private async enqueuePublication<T>(action: () => Promise<T>): Promise<T> {
-    const previous = this.publicationTail;
-    let release!: () => void;
-    this.publicationTail = new Promise<void>((resolve) => { release = resolve; });
-    await previous;
-    try { return await action(); } finally { release(); }
-  }
   return typeof value === "string" ? value : undefined;
 }
 
