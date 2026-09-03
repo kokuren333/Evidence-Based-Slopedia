@@ -50,7 +50,7 @@ export async function enqueueDailyNewsJobs(
   }));
   const existingFiles = new Set(await existingVaultPaths(fieldPlans.map((plan) => plan.targetPath)));
   const existingJobs = (await store.dailyJobsForDate(date)).filter(
-    (job) => !["failed", "failed_review_required", "cancelled"].includes(job.status),
+    (job) => ["queued", "running", "waiting_publish", "publishing"].includes(job.status),
   );
   const existingJobTargets = new Set(existingJobs.map((job) => job.daily?.targetPath).filter(Boolean));
   const plansToQueue = input.force
