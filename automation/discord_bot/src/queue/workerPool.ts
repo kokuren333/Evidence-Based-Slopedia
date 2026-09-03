@@ -29,6 +29,7 @@ import { parseFrontmatter } from "../../../ebs/core/src/migration/articleInvento
 
 export class WorkerPool {
   private timer: NodeJS.Timeout | undefined;
+  private publicationTail: Promise<void> = Promise.resolve();
   private readonly supervisor: WorkerSupervisor<Job>;
 
   constructor(
@@ -191,6 +192,7 @@ export class WorkerPool {
         await this.throwIfCancelled(job.id);
         job = await this.store.update(job.id, { status: "publishing" });
         if (config.autoDeploy.enabled && ["article", "daily_news", "daily_forecast", "image_maintenance"].includes(job.jobType ?? "article")) {
+          await this.enqueuePublication(async () => {
           await writeJobLog(job.id, JSON.stringify({ phase: "deploy_config", event: "resolved", timestamp: new Date().toISOString(), autoDeploy: config.autoDeploy.enabled, pagesDirectory: process.env.EBS_GITHUB_PAGES_DIR, vaultRoot: config.paths.vaultRoot }));
           const pagesDirectory = process.env.EBS_GITHUB_PAGES_DIR;
           if (!pagesDirectory) throw new Error("Automatic deployment is enabled but EBS_GITHUB_PAGES_DIR is not configured.");
@@ -204,6 +206,7 @@ export class WorkerPool {
           if (!result.remoteRevision || !/^[0-9a-f]{40}$/.test(result.remoteRevision)) throw new Error("Pages deployment returned no verified commit SHA.");
           await writeJobLog(job.id, JSON.stringify({ phase: "pages_sync_commit_push", event: "verified", timestamp: new Date().toISOString(), repository: path.resolve(pagesDirectory), commitSha: result.remoteRevision }));
           job = await this.store.update(job.id, { pagesCommitSha: result.remoteRevision, pagesUrl: config.autoDeploy.publicUrl });
+          });
         }
 
         await this.throwIfCancelled(job.id);
@@ -295,6 +298,14 @@ function phaseResult(value: unknown): unknown {
   if (value && typeof value === "object") {
     const record = value as Record<string, unknown>;
     return { result: record.result, remoteRevision: record.remoteRevision, articleCount: record.articleCount };
+  }
+
+  private async enqueuePublication<T>(action: () => Promise<T>): Promise<T> {
+    const previous = this.publicationTail;
+    let release!: () => void;
+    this.publicationTail = new Promise<void>((resolve) => { release = resolve; });
+    await previous;
+    try { return await action(); } finally { release(); }
   }
   return typeof value === "string" ? value : undefined;
 }
