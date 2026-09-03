@@ -66,6 +66,14 @@ EBEの成果物はライフサイクルで分ける。`_working/` は未公開�
 
 ## Discord Bot Automation
 
+The bot's deployment verification requires `EBS_PAGES_PUBLIC_URL` in
+`automation/discord_bot/.env`. Set it to the actual public site URL, including
+the Pages project path. This is configuration, not source code, so a domain
+change only requires updating `.env` and restarting the bot. See
+`automation/discord_bot/README.md` for temporary and permanent Windows startup
+settings, including `ComSpec`/`SystemRoot` required by non-interactive worker
+processes.
+
 責務分離とvalidationの配置は [`docs/ARCHITECTURE-AUDIT.md`](docs/ARCHITECTURE-AUDIT.md) にまとめている。
 
 このリポジトリには、DiscordのSlash CommandからEBS記事生成・一括記事生成・運用コマンドを実行するBot実装が含まれている。

@@ -18,10 +18,19 @@ export function quoteForShell(value: string): string {
 
 export async function runCommand(command: string, options: RunOptions): Promise<ShellResult> {
   return new Promise((resolve, reject) => {
+    const childEnv = { ...process.env, ...options.env };
+    // npm/Task Scheduler launches can omit the Windows shell variables even
+    // though node itself is available. Preserve the inherited values when
+    // present and provide the standard Windows fallbacks for worker commands.
+    if (process.platform === "win32") {
+      childEnv.ComSpec ||= childEnv.COMSPEC || "C:\\Windows\\System32\\cmd.exe";
+      childEnv.COMSPEC ||= childEnv.ComSpec;
+      childEnv.SystemRoot ||= "C:\\Windows";
+    }
     const child = spawn(command, {
       cwd: options.cwd,
       shell: true,
-      env: { ...process.env, ...options.env },
+      env: childEnv,
       windowsHide: true,
     });
     const abort = () => {

@@ -1,5 +1,38 @@
 # EBS Discord Bot
 
+## Runtime configuration and Windows startup
+
+Copy `.env.example` to `.env` and keep `.env` local; it contains credentials and
+machine-specific paths. `EBS_PAGES_PUBLIC_URL` is required for deployment
+verification when auto-deploy is enabled. It must be the public URL that serves
+the Pages repository, including its project path, for example:
+
+```env
+EBS_PAGES_PUBLIC_URL=https://your-account.github.io/your-pages-repository/
+```
+
+Changing domains does not require a code change: update this value and restart
+the bot. `.env` is loaded from `automation/discord_bot`, so starting the bot
+from another working directory without setting `EBS_BOT_ROOT`/paths can load a
+different configuration than expected.
+
+For a temporary Windows session, set the variables before starting Node:
+
+```bat
+set EBS_PAGES_PUBLIC_URL=https://your-account.github.io/your-pages-repository/
+set ComSpec=C:\Windows\System32\cmd.exe
+set COMSPEC=C:\Windows\System32\cmd.exe
+set SystemRoot=C:\Windows
+npm start
+```
+
+For permanent operation, store `EBS_PAGES_PUBLIC_URL` in the bot `.env` and
+configure the Task Scheduler/service launcher to start in this directory.
+The launcher must provide the standard Windows shell variables above because
+non-interactive tasks may not inherit them. After source or configuration
+changes, run `npm run build` and restart the bot; `npm start` executes `dist/`,
+not TypeScript source directly. Never commit `.env` or credentials.
+
 Evidence Based Slopedia（EBS）をDiscordから操作するためのBotである。DiscordのSlash Commandから記事生成、複数記事の一括キュー投入、日次ニュース作成、MOC整備、Git状態確認、VaultルートでのCodex実行を行える。
 
 ## できること
