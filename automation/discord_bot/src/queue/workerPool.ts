@@ -279,6 +279,8 @@ export class WorkerPool {
 
   private async resolveWorkerArticlePath(job: Job): Promise<string | undefined> {
     if (!job.worktreePath || !job.article) return undefined;
+    const recorded = job.article.sourcePath?.replace(/\\/g, "/");
+    if (recorded && isArticleSource(recorded) && await fs.access(path.join(job.worktreePath, recorded)).then(() => true).catch(() => false)) return recorded;
     const baseCommit = job.baseCommit;
     if (!baseCommit) {
       throw new Error(`Missing baseCommit for job ${job.id}`);
