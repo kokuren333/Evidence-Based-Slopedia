@@ -14,7 +14,7 @@ export async function runCodexForJob(job: Job, signal?: AbortSignal): Promise<vo
   }
 
   if (!job.worktreePath) throw new Error("Job is missing worktreePath");
-  const prompt = buildPrompt(job);
+  const prompt = `${buildPrompt(job)}\n\n${utf8ArtifactGuard(job)}\n`;
   const promptFile = path.join(job.worktreePath, "_working", "discord_jobs", `${job.id}-prompt.md`);
   await fs.mkdir(path.dirname(promptFile), { recursive: true });
   await fs.writeFile(promptFile, prompt, "utf8");
@@ -201,4 +201,17 @@ function buildPrompt(job: Job): string {
     job.query,
     "",
   ].join("\n");
+}
+
+function utf8ArtifactGuard(job: Job): string {
+  const target = job.jobType === "daily_news" ? job.daily?.targetPath : job.jobType === "daily_forecast" ? job.forecast?.targetPath : job.article?.sourcePath;
+  return [
+    "FINAL ARTIFACT AND ENCODING CONTRACT:",
+    "Write every Markdown file as valid UTF-8. Do not copy or emit mojibake such as 縺, 繧, 繝, 謇, or �.",
+    "Use the exact Japanese text in the job query as the topic; do not reinterpret corrupted prompt text.",
+    `Job ID: ${job.id}`,
+    target ? `Required durable target path: ${target}` : "",
+    "Before finishing, read the generated Markdown back as UTF-8 and repair any mojibake.",
+    "For an article job, the final article must be a complete publish-ready Markdown file under 10_Published/; do not leave only files under _working/.",
+  ].filter(Boolean).join("\n");
 }
