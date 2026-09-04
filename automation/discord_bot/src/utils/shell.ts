@@ -29,9 +29,9 @@ export async function runCommand(command: string, options: RunOptions): Promise<
     }
     const child = spawn(command, {
       cwd: options.cwd,
-      // Passing the executable explicitly avoids Node resolving shell:true
-      // from a missing/broken parent ComSpec in Task Scheduler sessions.
-      shell: process.platform === "win32" ? childEnv.ComSpec : true,
+      // Keep Node's standard shell resolution for compatibility with the
+      // existing Windows worker launch path.
+      shell: true,
       env: childEnv,
       windowsHide: true,
     });
