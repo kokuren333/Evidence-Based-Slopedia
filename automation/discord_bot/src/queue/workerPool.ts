@@ -198,7 +198,11 @@ export class WorkerPool {
         if (config.autoDeploy.enabled && ["article", "daily_news", "daily_forecast", "image_maintenance"].includes(job.jobType ?? "article")) {
           await this.enqueuePublication(async () => {
           job = await this.store.update(job.id, { status: "publishing", currentPhase: "promoting" });
-          const promotionPaths = await changedContentPaths(job.worktreePath!, job.baseCommit);
+          const allPromotionPaths = await changedContentPaths(job.worktreePath!, job.baseCommit);
+          const articleSourcePath = job.article?.sourcePath.replace(/\\/g, "/");
+          const promotionPaths = job.jobType === "article" && articleSourcePath
+            ? allPromotionPaths.filter((file) => !file.startsWith("10_Published/") || file === articleSourcePath)
+            : allPromotionPaths;
           await writeJobLog(job.id, JSON.stringify({ phase: "promotion", event: "targets", timestamp: new Date().toISOString(), paths: promotionPaths }));
           await promoteGeneratedContent(job.worktreePath!, config.paths.contentRoot, promotionPaths);
           await writeJobLog(job.id, JSON.stringify({ phase: "promotion", event: "succeeded", timestamp: new Date().toISOString(), targetCount: promotionPaths.length }));
