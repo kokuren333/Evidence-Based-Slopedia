@@ -46,7 +46,10 @@ export function contentPaths(root: string): ContentPaths {
 /** Publication classification shared by promotion, doctor and indexing boundaries. */
 export function isMocSource(relativePath: string): boolean {
   const name = relativePath.replace(/\\/g, "/").split("/").pop()?.normalize("NFKC").toLowerCase() ?? "";
-  return name === "_moc.md" || /(^|[\\s_-])moc([\\s_.-]|$)/i.test(name);
+  // MOC filenames may be localized or use punctuation/parentheses around
+  // the acronym. Treat the explicit MOC marker as authoritative; article
+  // filenames are not allowed to use this marker.
+  return name === "_moc.md" || name.includes("moc");
 }
 
 export function isArticleSource(relativePath: string): boolean {
