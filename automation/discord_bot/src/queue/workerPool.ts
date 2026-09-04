@@ -123,13 +123,21 @@ export class WorkerPool {
           resultSummary: "Codex root query completed.",
         });
       } else {
-        const workspace = await createWorktree(job);
+        const workspace = job.publishRetryOnly && job.worktreePath && job.branchName
+          ? { worktreePath: job.worktreePath, branchName: job.branchName }
+          : await createWorktree(job);
         job = await this.store.update(job.id, workspace);
         await writeJobLog(job.id, `Created worktree ${workspace.worktreePath} on ${workspace.branchName}`);
 
         await this.throwIfCancelled(job.id);
-        const activeWorker = this.supervisor.listActiveWorkers().find((worker) => worker.jobId === job.id);
-        await runCodexForJob(job, activeWorker?.abortController.signal);
+        if (!job.publishRetryOnly) {
+          const activeWorker = this.supervisor.listActiveWorkers().find((worker) => worker.jobId === job.id);
+          await runCodexForJob(job, activeWorker?.abortController.signal);
+        }
+        if (job.article) {
+          const identity = await resolveGeneratedArticleIdentity(job);
+          job = await this.store.update(job.id, { article: { ...job.article, sourcePath: identity.sourcePath, slug: identity.slug } });
+        }
         if (job.jobType === "moc_maintenance") {
           await assertMocIntegrity(job.worktreePath!);
         }
@@ -151,7 +159,9 @@ export class WorkerPool {
           throw new Error("Codex produced no durable EBE article artifacts outside ignored working/runtime paths.");
         }
 
-        if (job.jobType === "article" && job.mode === "new" && !job.article) {
+        job = await this.store.update(job.id, { currentPhase: "generated" });
+
+        if (job.jobType === "article" && job.mode === "new" && job.article && !job.canonicalized) {
           const canonical = await phase("canonicalizing", () => canonicalizeNewArticle(job));
           job = await this.store.update(job.id, { article: canonical, canonicalized: true });
         }
@@ -182,17 +192,16 @@ export class WorkerPool {
           }
         }
 
-        const promotionPaths = await changedContentPaths(job.worktreePath!, job.baseCommit);
-        await writeJobLog(job.id, JSON.stringify({ phase: "promotion", event: "targets", timestamp: new Date().toISOString(), paths: promotionPaths }));
-        await promoteGeneratedContent(job.worktreePath!, config.paths.contentRoot, promotionPaths);
-        await writeJobLog(job.id, JSON.stringify({ phase: "promotion", event: "succeeded", timestamp: new Date().toISOString(), targetCount: promotionPaths.length }));
-
         await writeJobLog(job.id, JSON.stringify({ phase: "source_git", event: "skipped", timestamp: new Date().toISOString(), reason: "content-only job; ContentRoot is canonical" }));
-        job = await this.store.update(job.id, { status: "waiting_publish" });
+        job = await this.store.update(job.id, { status: "waiting_publish", currentPhase: "ready_to_publish" });
         await this.throwIfCancelled(job.id);
-        job = await this.store.update(job.id, { status: "publishing" });
         if (config.autoDeploy.enabled && ["article", "daily_news", "daily_forecast", "image_maintenance"].includes(job.jobType ?? "article")) {
           await this.enqueuePublication(async () => {
+          job = await this.store.update(job.id, { status: "publishing", currentPhase: "promoting" });
+          const promotionPaths = await changedContentPaths(job.worktreePath!, job.baseCommit);
+          await writeJobLog(job.id, JSON.stringify({ phase: "promotion", event: "targets", timestamp: new Date().toISOString(), paths: promotionPaths }));
+          await promoteGeneratedContent(job.worktreePath!, config.paths.contentRoot, promotionPaths);
+          await writeJobLog(job.id, JSON.stringify({ phase: "promotion", event: "succeeded", timestamp: new Date().toISOString(), targetCount: promotionPaths.length }));
           await writeJobLog(job.id, JSON.stringify({ phase: "deploy_config", event: "resolved", timestamp: new Date().toISOString(), autoDeploy: config.autoDeploy.enabled, pagesDirectory: process.env.EBS_GITHUB_PAGES_DIR, vaultRoot: config.paths.vaultRoot }));
           const pagesDirectory = process.env.EBS_GITHUB_PAGES_DIR;
           if (!pagesDirectory) throw new Error("Automatic deployment is enabled but EBS_GITHUB_PAGES_DIR is not configured.");
@@ -204,13 +213,15 @@ export class WorkerPool {
           const result = await phase("pages_sync_commit_push", () => deployment.deploy(false));
           if (result.result !== "succeeded") throw new Error(`Site deployment failed${result.error ? `: ${result.error}` : "."}`);
           if (!result.remoteRevision || !/^[0-9a-f]{40}$/.test(result.remoteRevision)) throw new Error("Pages deployment returned no verified commit SHA.");
+          job = await this.store.update(job.id, { currentPhase: "pushed" });
+          await phase("verifying", () => verifyPublishedUrl(job));
           await writeJobLog(job.id, JSON.stringify({ phase: "pages_sync_commit_push", event: "verified", timestamp: new Date().toISOString(), repository: path.resolve(pagesDirectory), commitSha: result.remoteRevision }));
           job = await this.store.update(job.id, { pagesCommitSha: result.remoteRevision, pagesUrl: config.autoDeploy.publicUrl });
           });
         }
 
         await this.throwIfCancelled(job.id);
-        job = await this.store.update(job.id, { status: "succeeded", finishedAt: new Date().toISOString(), resultSummary: job.pagesCommitSha ? `Published to Pages at ${job.pagesCommitSha}; rebuild and deployment completed.` : "Content generated; deployment was not enabled." });
+        job = await this.store.update(job.id, { status: "succeeded", currentPhase: job.pagesCommitSha ? "published" : "succeeded", finishedAt: new Date().toISOString(), resultSummary: job.pagesCommitSha ? `Published to Pages at ${job.pagesCommitSha}; rebuild and deployment completed.` : "Content generated; deployment was not enabled." });
 
         if (!config.workers.keepSuccessfulWorktrees && job.worktreePath && job.branchName) {
           await removeWorktree(job.worktreePath, job.branchName);
@@ -224,6 +235,8 @@ export class WorkerPool {
       const failedStatus =
         errorText.toLowerCase().includes("cancelled") || errorText.toLowerCase().includes("aborted")
           ? "cancelled"
+          : ["promoting", "rebuilding", "building", "deploying", "pushed", "verifying"].includes(current.currentPhase ?? "")
+            ? "publish_retry_pending"
           : errorText.toLowerCase().includes("merge conflict") || errorText.toLowerCase().includes("reconciliation review required")
             ? "failed_review_required"
             : "failed";
@@ -280,6 +293,7 @@ export class WorkerPool {
   private async resolveWorkerArticlePath(job: Job): Promise<string | undefined> {
     if (!job.worktreePath || !job.article) return undefined;
     const recorded = job.article.sourcePath?.replace(/\\/g, "/");
+    if (recorded?.startsWith("_working/")) return undefined;
     if (recorded && isArticleSource(recorded) && await fs.access(path.join(job.worktreePath, recorded)).then(() => true).catch(() => false)) return recorded;
     const baseCommit = job.baseCommit;
     if (!baseCommit) {
@@ -299,6 +313,24 @@ export class WorkerPool {
     await previous;
     try { return await action(); } finally { release(); }
   }
+}
+
+async function verifyPublishedUrl(job: Job): Promise<void> {
+  const origin = config.autoDeploy.publicUrl;
+  if (!origin) throw new Error("DEPLOY_VERIFICATION_FAILED: EBS_PAGES_PUBLIC_URL is not configured");
+  // Daily news pages are built from the dated filename, whose basename is the
+  // canonical directoryName (for example Economy_Finance), not the enqueue
+  // slug (economy-finance). Keep verification aligned with the actual build
+  // output instead of probing a URL that can never exist.
+  const route = job.article?.slug ? `/articles/${job.article.slug.replace(/\\/g, "/").split("/").map(encodeURIComponent).join("/")}/` : job.forecast ? `/forecast/${encodeURIComponent(job.forecast.date)}/${encodeURIComponent(job.forecast.slug)}/` : job.daily ? `/news/${encodeURIComponent(job.daily.date)}/${encodeURIComponent(job.daily.directoryName)}/` : "/";
+  const basePath = (process.env.EBS_SITE_BASE_PATH ?? "/").replace(/\\/g, "/").replace(/^\/*/, "/").replace(/\/*$/, "/");
+  const url = new URL(`${basePath === "/" ? "" : basePath.slice(0, -1)}${route}`, origin.endsWith("/") ? origin : `${origin}/`);
+  let last = "";
+  for (const delay of [5000, 10000, 20000, 30000, 60000]) {
+    try { const response = await fetch(url, { redirect: "follow", signal: AbortSignal.timeout(15000) }); const body = await response.text(); if (response.ok && body.length > 200 && !/<title>.*404/i.test(body)) return; last = `HTTP ${response.status}`; } catch (error) { last = error instanceof Error ? error.message : String(error); }
+    await new Promise((resolve) => setTimeout(resolve, delay));
+  }
+  throw new Error(`DEPLOY_VERIFICATION_FAILED: ${url} (${last})`);
 }
 
 function normalizePhase(name: string): JobPhase { const value: Record<string, JobPhase> = { source_git: "validating", deploy_config: "deploying", rebuild: "rebuilding", dist_build_and_validation: "building", pages_sync_commit_push: "deploying", promotion: "promoting" }; return value[name] ?? (name as JobPhase); }
@@ -351,9 +383,8 @@ async function assertCanonicalPublishReady(root: string, repository: FilesystemA
 }
 
 async function canonicalizeNewArticle(job: Job): Promise<NonNullable<Job["article"]>> {
-  const sourcePath = await changedPublishedArticlePaths(job.worktreePath!, job.baseCommit);
-  if (sourcePath.length !== 1) throw new Error(`NEW_ARTICLE_IDENTITY_AMBIGUOUS: expected one article source, found ${sourcePath.length}`);
-  const relative = sourcePath[0];
+  const relative = job.article?.sourcePath?.replace(/\\/g, "/");
+  if (!relative || !isArticleSource(relative)) throw new Error("WORKER_RESULT_INVALID: new article sourcePath is not a published article path");
   const body = await fs.readFile(path.join(job.worktreePath!, relative), "utf8");
   const frontmatter = parseFrontmatter(body);
   const title = String(frontmatter.title ?? "").trim();
@@ -361,7 +392,35 @@ async function canonicalizeNewArticle(job: Job): Promise<NonNullable<Job["articl
   if (!title || !slug || slug.includes("\\") || slug.startsWith("/") || slug.includes("..")) throw new Error("NEW_ARTICLE_IDENTITY_INVALID: title and safe slug are required");
   const workerRepository = new FilesystemArticleRepository(job.worktreePath!, { eventsFile: path.join(job.worktreePath!, "canonical", "events", "management-events.jsonl") });
   const content = new ContentService(job.worktreePath!, workerRepository);
-  const article = await content.create({ title, slug, category: String(frontmatter.category_name ?? frontmatter.category ?? ""), subfield: String(frontmatter.subfield_name ?? frontmatter.subfield ?? ""), sourcePath: relative, context: { actor: "worker", origin: "canonicalization", jobId: job.id } });
+  const article = await content.create({ id: job.article?.articleId, title, slug, category: String(frontmatter.category_name ?? frontmatter.category ?? ""), subfield: String(frontmatter.subfield_name ?? frontmatter.subfield ?? ""), sourcePath: relative, context: { actor: "worker", origin: "canonicalization", jobId: job.id } });
   const published = await content.publish(article.id, { actor: "worker", origin: "canonicalization", jobId: job.id });
   return { articleId: published.id, operation: "create", sourcePath: published.sourcePath, title: published.title, slug: published.slug, contentHash: published.contentHash, revision: published.currentRevision };
+}
+
+async function resolveGeneratedArticleIdentity(job: Job): Promise<{ sourcePath: string; slug: string }> {
+  if (!job.worktreePath || !job.article) throw new Error("ARTICLE_IDENTITY_INVALID: job identity is missing");
+  const pending = job.article.sourcePath.replace(/\\/g, "/");
+  if (!pending.startsWith("_working/")) return { sourcePath: pending, slug: job.article.slug ?? path.basename(pending, ".md") };
+  const files = await listMarkdown(path.join(job.worktreePath, "10_Published"));
+  const matches: { sourcePath: string; slug: string }[] = [];
+  for (const file of files) {
+    const text = await fs.readFile(file, "utf8");
+    const fm = parseFrontmatter(text);
+    if (String(fm.article_id ?? fm.articleId ?? "").trim() !== job.article.articleId) continue;
+    const sourcePath = path.relative(job.worktreePath, file).replace(/\\/g, "/");
+    if (!isArticleSource(sourcePath)) continue;
+    matches.push({ sourcePath, slug: String(fm.slug ?? path.basename(file, ".md")).trim() });
+  }
+  if (matches.length !== 1) throw new Error(`ARTICLE_IDENTITY_MISMATCH: expected one article_id match, found ${matches.length}`);
+  return matches[0];
+}
+
+async function listMarkdown(root: string): Promise<string[]> {
+  const result: string[] = [];
+  for (const entry of await fs.readdir(root, { withFileTypes: true }).catch(() => [] as import("node:fs").Dirent[])) {
+    const target = path.join(root, entry.name);
+    if (entry.isDirectory()) result.push(...await listMarkdown(target));
+    else if (entry.isFile() && entry.name.toLowerCase().endsWith(".md")) result.push(target);
+  }
+  return result;
 }
