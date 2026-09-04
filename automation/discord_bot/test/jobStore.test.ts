@@ -94,14 +94,17 @@ test("atomic file replacement is readable after repository restart", async () =>
   await assert.rejects(fs.access(`${file}.tmp`));
 });
 
-test("interrupted jobs recover to failed_review_required", async () => {
+test("interrupted generation reviews while publish jobs recover for publish-only retry", async () => {
   const store = new JobStore(path.join(root, "recover.json"));
   const jobs = await store.createMany([input("running"), input("waiting"), input("publishing"), input("queued")]);
   await store.update(jobs[0].id, { status: "running" });
   await store.update(jobs[1].id, { status: "waiting_publish" });
-  await store.update(jobs[2].id, { status: "publishing" });
+  await store.update(jobs[2].id, { status: "publishing", worktreePath: path.join(root, "worktree") });
   const recovered = await store.recoverInterruptedJobs();
   assert.equal(recovered.length, 3);
-  assert.ok(recovered.every((job) => job.status === "failed_review_required"));
+  assert.equal((await store.get(jobs[0].id))?.status, "failed_review_required");
+  assert.equal((await store.get(jobs[1].id))?.status, "failed_review_required");
+  assert.equal((await store.get(jobs[2].id))?.status, "publish_retry_pending");
+  assert.equal((await store.get(jobs[2].id))?.publishRetryOnly, true);
   assert.equal((await store.get(jobs[3].id))?.status, "queued");
 });

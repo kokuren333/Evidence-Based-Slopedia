@@ -6,7 +6,8 @@ import { FilesystemMutationLock } from "../../../ebs/core/src/infrastructure/fil
 const allowedRoots = ["10_Published/", "11_Daily/", "12_Forecasting/", "50_Assets/", "canonical/metadata/", "canonical/revisions/"];
 export async function promoteGeneratedContent(worktree: string, contentRoot: string, changedPaths: string[]): Promise<void> {
   const lock = new FilesystemMutationLock(contentRoot);
-  return lock.withLock("content-build-deploy", async () => promoteGeneratedContentUnlocked(worktree, contentRoot, changedPaths));
+  // Contention is normal publication queueing, not a job failure.
+  return lock.withLock("content-build-deploy", async () => promoteGeneratedContentUnlocked(worktree, contentRoot, changedPaths), { timeoutMs: 6 * 60 * 60 * 1000 });
 }
 
 async function promoteGeneratedContentUnlocked(worktree: string, contentRoot: string, changedPaths: string[]): Promise<void> {

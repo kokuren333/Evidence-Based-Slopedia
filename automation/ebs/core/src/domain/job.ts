@@ -5,6 +5,7 @@ export type JobStatus =
   | "running"
   | "waiting_publish"
   | "publishing"
+  | "publish_retry_pending"
   | "succeeded"
   | "failed"
   | "failed_review_required"
@@ -21,6 +22,7 @@ export type JobType =
 export type JobPriority = "P0" | "P1" | "P2" | "P3" | "P4";
 export type JobOrigin = "discord" | "cli" | "scheduler" | "system";
 export type ArticleMode = "new" | "update";
+export type JobPhase = "queued" | "generating" | "generated" | "ready_to_publish" | "validating" | "promoting" | "doctor" | "rebuilding" | "building" | "deploying" | "pushed" | "verifying" | "published" | "succeeded" | "failed" | "cancelled";
 
 export interface JobActor {
   id: string;
@@ -31,7 +33,8 @@ export interface DailyNewsMeta { date: string; yearMonth: string; fieldNumber: n
 export interface DailyForecastMeta { date: string; year: string; month: string; forecastType: string; slug: string; fileName: string; targetPath: string; }
 export interface MocMaintenanceMeta { scope: "all" | "published" | "daily"; }
 export interface ImageMaintenanceMeta { scope: "all" | "published" | "daily"; }
-export interface ArticleJobMeta { articleId: string; operation: "create" | "regenerate" | "research_update"; sourcePath: string; operationId?: string; }
+export interface ArticleJobMeta { articleId: string; operation: "create" | "regenerate" | "research_update"; sourcePath: string; operationId?: string; title?: string; slug?: string; contentHash?: string; revision?: number; }
+export interface WorkerResult { jobId: string; articleId: string; sourcePath: string; slug: string; }
 
 export interface CoreJob {
   id: JobId;
@@ -46,6 +49,19 @@ export interface CoreJob {
   scheduledAt?: string;
   idempotencyKey?: string;
   errorMessage?: string;
+  currentPhase?: JobPhase;
+  lastSuccessfulPhase?: JobPhase;
+  phaseStartedAt?: string;
+  phaseCompletedAt?: string;
+  failedAt?: string;
+  errorCode?: string;
+  errorDetails?: string;
+  retryable?: boolean;
+  contentRoot?: string;
+  publicUrl?: string;
+  cleanupResult?: Record<string, unknown>;
+  canonicalized?: boolean;
+  publishRetryOnly?: boolean;
 }
 
 export interface Job extends CoreJob {

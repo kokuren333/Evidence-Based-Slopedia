@@ -8,9 +8,10 @@ import type { ArticleRepository } from "../ports/articleRepository.js";
 import { parseFrontmatter, sha256 } from "../migration/articleInventory.js";
 import { ArticleResolver } from "./articleResolver.js";
 import { FilesystemMutationLock } from "../infrastructure/filesystemMutationLock.js";
+import { canonicalizePath, resolveContentPath } from "../infrastructure/contentPaths.js";
 
 export interface OperationContext { actor: string; origin: string; jobId?: string; gitSha?: string; summary?: string; }
-export interface CreateArticleInput { title: string; slug?: string; category?: string; subfield?: string; aliases?: string[]; sourcePath?: string; prompt?: string; context: OperationContext; autonomous?: ArticleMetadata["autonomous"]; }
+export interface CreateArticleInput { id?: string; title: string; slug?: string; category?: string; subfield?: string; aliases?: string[]; sourcePath?: string; prompt?: string; context: OperationContext; autonomous?: ArticleMetadata["autonomous"]; }
 export interface EditArticleInput { title?: string; slug?: string; aliases?: string[]; category?: string; subfield?: string; replaceFile?: string; context: OperationContext; }
 
 export class ContentService {
@@ -26,7 +27,7 @@ export class ContentService {
     const now = new Date().toISOString(); const id = generateArticleId();
     const slug = input.slug ?? generateArticleSlug(input.category, input.title);
     await this.assertSlugAvailable(slug);
-    let article: ArticleMetadata = { id, type: "encyclopedia", title: input.title, slug, status: "draft", sourcePath: input.sourcePath ?? `_working/pending/${id}.md`, createdAt: now, updatedAt: now, aliases: input.aliases ?? [], category: input.category, subfield: input.subfield, image: null, currentRevision: 0, autonomous: input.autonomous };
+    let article: ArticleMetadata = { id: input.id ?? id, type: "encyclopedia", title: input.title, slug, status: "draft", sourcePath: input.sourcePath ?? `_working/pending/${input.id ?? id}.md`, createdAt: now, updatedAt: now, aliases: input.aliases ?? [], category: input.category, subfield: input.subfield, image: null, currentRevision: 0, autonomous: input.autonomous };
     return this.execute("create", article, input.context, async (operationId) => {
       await this.assertSlugAvailable(slug);
       await this.repository.save(article);
@@ -51,6 +52,18 @@ export class ContentService {
   regenerate(target: string, context: OperationContext, prompt?: string) { return this.generateExisting(target, "regenerate", context, prompt); }
   researchUpdate(target: string, context: OperationContext, prompt?: string) { return this.generateExisting(target, "research_update", context, prompt); }
   publish(target: string, context: OperationContext) { return this.transition(target, "published", "publish", context, true); }
+  async repairMissingAsset(target: string, missingAssetPath: string, context: OperationContext): Promise<ArticleMetadata> {
+    const article = await this.resolver.resolve(target);
+    return this.operationLocks.withLock(`article-operation-${article.id}`, async () => {
+      const current = await this.repository.getById(article.id); if (!current || current.currentRevision !== article.currentRevision) throw new Error("Concurrent article mutation detected");
+      const source = await resolveContentPath(this.vaultRoot, current.sourcePath); const oldBody = await fs.readFile(source, "utf8");
+      const oldHash = sha256(oldBody); if (current.currentRevision !== 4 || current.contentHash !== oldHash) throw new Error("REPAIR_PRECONDITION_FAILED");
+      const marker = missingAssetPath.replace(/\\/g, "/"); const lines = oldBody.split(/\r?\n/); const body = lines.filter((line) => !line.includes(marker) && !line.trim().startsWith("infographic_path:")).join("\n");
+      const newHash = sha256(body); const now = new Date().toISOString(); const operationId = randomUUID(); const updated = { ...current, sourcePath: canonicalizePath(current.sourcePath), contentHash: newHash, currentRevision: 5, updatedAt: now };
+      const revision = { articleId: updated.id, revision: 5, timestamp: now, operation: "repair" as const, operationId, actor: context.actor, origin: context.origin, previousHash: oldHash, newHash, summary: "Remove dangling asset reference", metadataSnapshot: updated, bodySnapshot: body };
+      await fs.writeFile(source, body, "utf8"); await this.repository.save(updated); await this.repository.appendRevision(revision); await this.repository.appendEvent({ operationId, articleId: updated.id, operation: "repair", phase: "completed", timestamp: now, actor: context.actor, origin: context.origin, revision: 5, reason: "dangling_asset_reference_removed", contentHash: newHash, sourcePath: updated.sourcePath, evidence: { fromRevision: 4, toRevision: 5, missingAssetPath, oldContentHash: oldHash, newContentHash: newHash } }); return updated;
+    });
+  }
   unpublish(target: string, context: OperationContext) { return this.transition(target, "unpublished", "unpublish", context); }
   archive(target: string, context: OperationContext, reason?: string) { return this.transition(target, "archived", "archive", context, false, { archiveReason: reason }); }
 

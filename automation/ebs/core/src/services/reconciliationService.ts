@@ -20,7 +20,12 @@ export class ReconciliationService {
       try { await this.content.completeQueuedGeneration(job.article.articleId, job.article.operation, operationId, { actor: "worker", origin: "reconcile", jobId: job.id, gitSha: job.pushedCommitSha ?? job.commitSha }, sourcePath ?? job.article.sourcePath); return finding("JOB_COMPLETION_RECONCILED", "INFO", `Completed ${job.article.operation}`, job.article, job, true, false); }
       catch (error) { return finding("JOB_COMPLETION_REVIEW_REQUIRED", "ERROR", error instanceof Error ? error.message : String(error), job.article, job, false, true); }
     }
-    if (["failed", "failed_review_required", "cancelled"].includes(job.status)) { await this.content.failQueuedGeneration(job.article.articleId, job.article.operation, operationId, { actor: "worker", origin: "reconcile", jobId: job.id, gitSha: job.pushedCommitSha ?? job.commitSha }, job.errorMessage ?? `Job ended as ${job.status}`); return finding("JOB_FAILURE_RECONCILED", "WARNING", `Recorded ${job.status}`, job.article, job, true, job.status === "failed_review_required"); }
+    if (["failed", "failed_review_required", "cancelled"].includes(job.status)) {
+      const article = await this.articles.getById(job.article.articleId);
+      if (!article) return finding("JOB_ARTICLE_NOT_CANONICALIZED", "WARNING", `Article ${job.article.articleId} is not present in canonical metadata; retained for review`, job.article, job, false, true);
+      await this.content.failQueuedGeneration(job.article.articleId, job.article.operation, operationId, { actor: "worker", origin: "reconcile", jobId: job.id, gitSha: job.pushedCommitSha ?? job.commitSha }, job.errorMessage ?? `Job ended as ${job.status}`);
+      return finding("JOB_FAILURE_RECONCILED", "WARNING", `Recorded ${job.status}`, job.article, job, true, job.status === "failed_review_required");
+    }
     return finding("JOB_NOT_TERMINAL", "INFO", `Job remains ${job.status}`, job.article, job, false, false);
   }
 

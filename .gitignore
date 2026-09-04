@@ -17,6 +17,25 @@
 
 # EBS canonical state is intentionally trackable; derived output is rebuildable.
 /canonical/.locks/
+
+# Content is persisted outside this repository in EBS_CONTENT_ROOT.
+/10_Published/
+/11_Daily/
+/12_Forecasting/
+/50_Assets/
+/canonical/metadata/articles/
+/canonical/metadata/tombstones/
+/canonical/revisions/
+
+# Generated content is canonical in EBS_CONTENT_ROOT, never in AppRoot.
+/10_Published/*/*/*.md
+/11_Daily/**/*.md
+/12_Forecasting/**/*.md
+/50_Assets/Articles/*
+/50_Assets/Infographics/*
+/canonical/metadata/articles/*
+/canonical/metadata/tombstones/*
+/canonical/revisions/*
 /generated/
 /dist/
 /dist.tmp-*/

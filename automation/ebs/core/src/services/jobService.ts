@@ -27,7 +27,7 @@ export interface ServiceOperationRecord {
 export type ServiceOperationLogger = (record: ServiceOperationRecord) => void | Promise<void>;
 
 const statuses: JobStatus[] = [
-  "queued", "running", "waiting_publish", "publishing", "succeeded", "failed", "failed_review_required", "cancelled",
+  "queued", "running", "waiting_publish", "publishing", "publish_retry_pending", "succeeded", "failed", "failed_review_required", "cancelled",
 ];
 
 export class JobService<TJob extends CoreJob = CoreJob, TCreate = Record<string, unknown>> {

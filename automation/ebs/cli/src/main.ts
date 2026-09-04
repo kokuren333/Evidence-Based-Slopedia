@@ -22,6 +22,7 @@ import { FilesystemMutationLock } from "../../core/src/infrastructure/filesystem
 import { ImageService } from "../../core/src/services/imageService.js";
 import { BackupService } from "../../core/src/services/backupService.js";
 import { DeployService, GitHubPagesDeploymentTarget } from "../../core/src/services/deployService.js";
+import { contentPaths } from "../../core/src/infrastructure/contentPaths.js";
 
 export const ExitCode = { success: 0, failure: 1, invalidArguments: 2, notFound: 3 } as const;
 
@@ -29,9 +30,12 @@ export async function runCli(argv: string[], output = console): Promise<number> 
   const json = argv.includes("--json");
   const args = argv.filter((arg) => arg !== "--json");
   const vaultRoot = await findVaultRoot(path.resolve(process.env.EBS_VAULT_ROOT ?? process.cwd()));
+  const contentRootValue = process.env.EBS_CONTENT_ROOT;
+  if (!contentRootValue?.trim()) throw new Error("EBS_CONTENT_ROOT is required for content commands.");
+  const contentRoot = contentPaths(contentRootValue).root;
   const dataDir = path.resolve(process.env.EBE_BOT_DATA_DIR ?? path.join(vaultRoot, "automation", "discord_bot", "data"));
   const service = new JobService<Job, CreateJobInput>(new JsonJobRepository(path.join(dataDir, "jobs.json")));
-  const articleRepository = new FilesystemArticleRepository(vaultRoot);
+  const articleRepository = new FilesystemArticleRepository(contentRoot);
   const generator: ArticleGenerator = {
     async generate(request) {
       const autonomous = request.article.autonomous?.origin === "autonomous";
@@ -39,14 +43,14 @@ export async function runCli(argv: string[], output = console): Promise<number> 
       return { jobId: job.id, sourcePath: request.article.sourcePath, summary: `${request.operation} queued`, pending: true };
     },
   };
-  const content = new ContentService(vaultRoot, articleRepository, generator);
-  const indexes = new IndexService(vaultRoot, articleRepository); const builds = new BuildService(vaultRoot, articleRepository, indexes); const reconciliation = new ReconciliationService(vaultRoot, articleRepository, new JsonJobRepository(path.join(dataDir, "jobs.json"))); const doctor = new DoctorService(vaultRoot, articleRepository, new JsonJobRepository(path.join(dataDir, "jobs.json")));
-  const registry = new CandidateRegistry(path.join(vaultRoot, "canonical", "autonomous", "registry.json"));
+  const content = new ContentService(contentRoot, articleRepository, generator);
+  const indexes = new IndexService(contentRoot, articleRepository); const builds = new BuildService(contentRoot, articleRepository, indexes); const reconciliation = new ReconciliationService(contentRoot, articleRepository, new JsonJobRepository(path.join(dataDir, "jobs.json"))); const doctor = new DoctorService(contentRoot, articleRepository, new JsonJobRepository(path.join(dataDir, "jobs.json")));
+  const registry = new CandidateRegistry(path.join(contentRoot, "canonical", "autonomous", "registry.json"));
   const discovery = new TopicDiscoveryService(articleRepository, registry, new HttpWikipediaClient());
   const auto = new AutoGenerationService(new JsonJobRepository(path.join(dataDir, "jobs.json")), registry, discovery, content, { canStart: async () => ({ ok: true }), snapshot: async () => ({ ok: true, enabled: true, memoryPercent: 0, cpuPercent: 0 }) }, { maxPerHour: Number(process.env.EBS_AUTO_MAX_PER_HOUR ?? 6), maxPerDay: Number(process.env.EBS_AUTO_MAX_PER_DAY ?? 50), cooldownMinutes: [60, 360, 1440, 10080], circuitWindow: 10, circuitMaxFailures: 5, circuitCooldownMinutes: 60, languages: ["ja", "en"] });
-  const scheduler = new SchedulerService(auto, registry, new FilesystemMutationLock(vaultRoot), { minIntervalMinutes: 5, maxIntervalMinutes: 10 });
-  const images = new ImageService(vaultRoot, articleRepository);
-const deployDirectory = process.env.EBS_GITHUB_PAGES_DIR; const runtimeRoot = path.resolve(process.env.EBE_BOT_RUNTIME_DIR ?? path.join(process.cwd(), "..", "..", "..", "discord_bot-runtime")); const deploy = new DeployService(vaultRoot, deployDirectory ? new GitHubPagesDeploymentTarget(path.resolve(deployDirectory)) : undefined, runtimeRoot); const backup = new BackupService(vaultRoot);
+  const scheduler = new SchedulerService(auto, registry, new FilesystemMutationLock(contentRoot), { minIntervalMinutes: 5, maxIntervalMinutes: 10 });
+  const images = new ImageService(contentRoot, articleRepository);
+const deployDirectory = process.env.EBS_GITHUB_PAGES_DIR; const runtimeRoot = path.resolve(process.env.EBE_BOT_RUNTIME_DIR ?? path.join(process.cwd(), "..", "..", "..", "discord_bot-runtime")); const deploy = new DeployService(contentRoot, deployDirectory ? new GitHubPagesDeploymentTarget(path.resolve(deployDirectory)) : undefined, runtimeRoot); const backup = new BackupService(vaultRoot);
   const context = { actor: process.env.USERNAME ?? process.env.USER ?? "cli-user", origin: "cli" };
   try {
     if (args[0] === "auto") {
@@ -82,8 +86,8 @@ const deployDirectory = process.env.EBS_GITHUB_PAGES_DIR; const runtimeRoot = pa
       const result = selected[0] === "--search" ? await indexes.rebuildSearch() : selected[0] === "--category" ? await indexes.rebuildCategories() : selected[0] === "--moc" ? await indexes.rebuildMoc() : selected[0] === "--related" ? await indexes.rebuildRelated() : selected[0] === "--backlinks" ? await indexes.rebuildBacklinks() : selected[0] === "--sitemap" ? await indexes.rebuildSitemap() : await indexes.rebuildAll(); return print(output, json, result);
     }
     if (args[0] === "build") { const target = option(args, "--article"); const id = target ? (await content.show(target)).id : undefined; return print(output, json, await builds.build(id)); }
-    if (args[0] === "doctor") return print(output, json, await doctor.run(args.includes("--fix")));
-    if (args[0] === "rebuild") { const reconciled = await reconciliation.reconcileAll(true); const indexManifest = await indexes.rebuildAll(); const build = await builds.build(); return print(output, json, { reconciled, indexManifest, build }); }
+    if (args[0] === "doctor") return print(output, json, { contentRoot, result: await doctor.run(args.includes("--fix")) });
+    if (args[0] === "rebuild") { const reconciled = await reconciliation.reconcileAll(true); const indexManifest = await indexes.rebuildAll(); const build = await builds.build(); return print(output, json, { contentRoot, reconciled, indexManifest, build }); }
     if (args[0] === "article") {
       const command = args[1]; const target = args[2];
       if (command === "list") return print(output, json, await content.list());
@@ -111,6 +115,12 @@ const deployDirectory = process.env.EBS_GITHUB_PAGES_DIR; const runtimeRoot = pa
     }
     if (args[0] === "job" && args[1] === "list") {
       return print(output, json, await service.list());
+    }
+    if (args[0] === "job" && ["status", "logs", "failures"].includes(args[1] ?? "")) {
+      const id = args[2]; if (!id) return invalid(output, json, "job id is required"); const job = await service.status(id);
+      if (args[1] === "status") return print(output, json, { contentRoot, job });
+      const logDir = path.resolve(process.env.EBE_BOT_LOG_DIR ?? path.join(vaultRoot, "automation", "discord_bot", "logs")); const fs = await import("node:fs/promises"); const files = (await fs.readdir(logDir).catch(() => [])).filter((file) => file.includes(id)); const text = (await Promise.all(files.map((file) => fs.readFile(path.join(logDir, file), "utf8")))).join("");
+      return print(output, json, args[1] === "failures" ? text.split(/\r?\n/).filter((line) => /phase.failed|FAILED|error/i.test(line)) : text);
     }
     if (args[0] === "job" && ["status", "retry", "cancel"].includes(args[1] ?? "")) {
       const id = args[2];

@@ -15,6 +15,7 @@ import type { JobService } from "../../../ebs/core/src/services/jobService.js";
 import type { AutoGenerationService } from "../../../ebs/core/src/services/autoGenerationService.js";
 import type { SchedulerService } from "../../../ebs/core/src/services/schedulerService.js";
 import { safeListOutput, safeSections } from "../services/discordOutput.js";
+import fs from "node:fs/promises";
 
 export function createDiscordClient(
   store: JobStore,
@@ -211,8 +212,9 @@ export function createDiscordClient(
           ].join("\n"),
         );
       } else if (interaction.commandName === "job-list") {
-        const jobs = await jobService.list(50);
-        await interaction.reply(safeListOutput(`Latest jobs (${jobs.length} shown, max 50):`, jobs.map(formatJobLine)));
+        const jobs = (await jobService.list(100)).filter((job) => Boolean(job.worktreePath));
+        const existing = (await Promise.all(jobs.map(async (job) => (await fs.access(job.worktreePath!).then(() => job).catch(() => undefined))))).filter((job): job is Job => Boolean(job)).slice(0, 50);
+        await interaction.reply(safeListOutput(`Active worktrees (${existing.length} shown, max 50):`, existing.map(formatJobLine)));
       } else if (interaction.commandName === "worker-list") {
         const workers = getWorkerPool().listActiveWorkers();
         await interaction.reply(

@@ -10,4 +10,5 @@ export type {
   JobType,
   MocMaintenanceMeta,
   ShellResult,
+  WorkerResult,
 } from "../../ebs/core/src/domain/job.js";

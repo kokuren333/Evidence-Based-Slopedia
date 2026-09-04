@@ -1,6 +1,6 @@
 import type { ArticleId, ArticleMetadata, ArticleStatus } from "./article.js";
 
-export type ArticleOperation = "create" | "edit" | "regenerate" | "research_update" | "publish" | "unpublish" | "archive" | "delete" | "restore" | "rename" | "rollback";
+export type ArticleOperation = "create" | "edit" | "regenerate" | "research_update" | "publish" | "unpublish" | "archive" | "delete" | "restore" | "rename" | "rollback" | "reconcile" | "repair";
 
 export interface ArticleRevision {
   articleId: ArticleId;
@@ -31,6 +31,11 @@ export interface ManagementEvent {
   gitSha?: string;
   revision?: number;
   error?: string;
+  reason?: string;
+  contentHash?: string;
+  sourcePath?: string;
+  evidence?: string[] | Record<string, unknown>;
+  reconciliationVersion?: string;
 }
 
 export interface ArticleTombstone {

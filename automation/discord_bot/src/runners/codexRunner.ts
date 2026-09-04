@@ -6,10 +6,11 @@ import { quoteForShell, runCommand } from "../utils/shell.js";
 import { assertMocIntegrity } from "./mocIntegrityChecker.js";
 import type { ContentExecutor } from "../../../ebs/core/src/ports/contentExecutor.js";
 
+
 export async function runCodexForJob(job: Job, signal?: AbortSignal): Promise<void> {
   if (job.jobType === "codex") {
     await runCodexForRootQuery(job, signal);
-    return;
+    return undefined;
   }
 
   if (!job.worktreePath) throw new Error("Job is missing worktreePath");
@@ -24,7 +25,7 @@ export async function runCodexForJob(job: Job, signal?: AbortSignal): Promise<vo
     .replaceAll("{cwd}", quoteForShell(job.worktreePath))
     .replaceAll("{promptFile}", quoteForShell(promptFile));
 
-  const result = await runCommand(command, {
+  const commandResult = await runCommand(command, {
     cwd: job.worktreePath,
     stdin: prompt,
     timeoutMs: 1000 * 60 * 60 * 6,
@@ -32,12 +33,13 @@ export async function runCodexForJob(job: Job, signal?: AbortSignal): Promise<vo
   });
 
   const logFile = path.join(job.worktreePath, "_working", "discord_jobs", `${job.id}-codex-output.log`);
-  await fs.writeFile(logFile, `STDOUT\n${result.stdout}\n\nSTDERR\n${result.stderr}\n`, "utf8");
-  if (result.code !== 0) {
-    throw new Error(`Codex command failed (${result.code}). See ${logFile}`);
+  await fs.writeFile(logFile, `STDOUT\n${commandResult.stdout}\n\nSTDERR\n${commandResult.stderr}\n`, "utf8");
+  if (commandResult.code !== 0) {
+    throw new Error(`Codex command failed (${commandResult.code}). See ${logFile}`);
   }
 
   await assertMocIntegrity(job.worktreePath);
+  return undefined;
 }
 
 export async function runCodexForRootQuery(job: Job, signal?: AbortSignal): Promise<void> {
@@ -71,7 +73,7 @@ export async function runCodexForRootQuery(job: Job, signal?: AbortSignal): Prom
 }
 
 export const codexContentExecutor: ContentExecutor<Job> = {
-  execute: runCodexForJob,
+  execute: async (job, signal) => { await runCodexForJob(job, signal); },
 };
 
 function buildPrompt(job: Job): string {
@@ -188,8 +190,12 @@ function buildPrompt(job: Job): string {
     "- 文字化けを残さない。保存前にUTF-8で読み返し、縺、繧、繝、譁、邵、郢、隴、�、??? などのmojibakeがあれば修復する。",
     "- 実装基盤やDiscord Botのコードは、依頼に直接必要な場合だけ変更する。",
     "",
+    "数式は必ず $...$、$$...$$、\\(...\\)、\\[...\\] のいずれかで囲む。括弧だけでLaTeXを書かず、\\to、\\cdots、\\lambda、\\operatorname 等を通常本文に残さない。",
+    "数式を含む場合は保存前にMarkdownを再読し、delimiter、バックスラッシュ、添字、分数、行列が保持されていることを確認する。",
+    "画像はimagegenのPNGをローカル原本として保存してよいが、公開用の画像参照はWebP成果物を使う。PNGをPagesへ直接出力しない。",
     `mode: ${job.mode}`,
     `job_id: ${job.id}`,
+    ...(job.jobType === "article" && job.article ? [`Article identity contract: use articleId=${job.article.articleId} exactly. Do not generate or infer another ID and do not use the slug as articleId. Include article_id: ${job.article.articleId} in the generated article frontmatter. The Bot, not the worker, determines the final sourcePath.`] : []),
     "",
     "テーマ / クエリ:",
     job.query,

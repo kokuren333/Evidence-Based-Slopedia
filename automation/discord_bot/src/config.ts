@@ -59,6 +59,7 @@ export const config = {
   },
   paths: {
     vaultRoot: path.resolve(env("EBE_VAULT_ROOT")),
+    contentRoot: path.resolve(env("EBS_CONTENT_ROOT", path.join("..", "..", "..", "discord_bot-runtime", "content"))),
     worktreeRoot: path.resolve(env("EBE_WORKTREE_ROOT")),
     // Keep mutable bot state outside the Vault checkout. A bot process must
     // never create untracked files beside the worker-published content.

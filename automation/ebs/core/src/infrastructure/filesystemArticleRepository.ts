@@ -4,6 +4,7 @@ import { assertArticleMetadata, type ArticleId, type ArticleMetadata } from "../
 import type { ArticleRevision, ArticleTombstone, ManagementEvent } from "../domain/revision.js";
 import type { ArticleRepository } from "../ports/articleRepository.js";
 import { FilesystemMutationLock } from "./filesystemMutationLock.js";
+import { canonicalizePath } from "./contentPaths.js";
 
 export class FilesystemArticleRepository implements ArticleRepository {
   readonly articlesDir: string;
@@ -47,5 +48,5 @@ export class FilesystemArticleRepository implements ArticleRepository {
 
 async function atomicJson(file: string, value: unknown): Promise<void> { await fs.mkdir(path.dirname(file), { recursive: true }); const tmp = `${file}.tmp`; await fs.writeFile(tmp, `${JSON.stringify(value, null, 2)}\n`, "utf8"); await fs.rename(tmp, file); }
 async function readJson<T>(file: string): Promise<T | undefined> { try { return JSON.parse(await fs.readFile(file, "utf8")) as T; } catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined; throw error; } }
-function normalizePath(value: string): string { return value.replace(/\\/g, "/").normalize("NFC").toLowerCase(); }
+function normalizePath(value: string): string { return canonicalizePath(value).toLowerCase(); }
 function safeId(value: string): boolean { return /^art_[A-Za-z0-9._-]+$/.test(value); }

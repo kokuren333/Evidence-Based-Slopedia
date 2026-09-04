@@ -26,6 +26,18 @@ test("Phase 5 build creates portable portal pages, topic routes, crawl-safe asse
   assert.ok(tree["articles/技術・AI/gpu/index.html"]); assert.ok(tree["topics/技術・AI/index.html"]); assert.match(tree["index.html"], /\/ebs\/articles\//); assert.match(tree["articles/技術・AI/gpu/index.html"], /class="toc"/); assert.match(tree["articles/技術・AI/gpu/index.html"], /summary-card/); assert.match(tree["assets/ebs.css"], /clip:rect\(0,0,0,0\)/); assert.match(tree["assets/ebs.css"], /overflow-wrap:anywhere/); assert.doesNotMatch(Object.values(tree).join("\n"), /source_path|worktree|canonical\//i);
 });
 
+test("build accepts ContentRoot input and writes dist only to the AppRoot output", async () => {
+  const { root, repository, seed } = await phase3Fixture();
+  await seed("art_ROOTS", "Separated roots", "science/separated-roots", "published", "ContentRoot article\n");
+  const indexes = new IndexService(root, repository);
+  await indexes.rebuildAll();
+  const appRoot = path.join(root, "app-root");
+  const result = await new BuildService(root, repository, indexes, { basePath: "/" }, appRoot).build();
+  assert.equal(result.distDir, path.join(appRoot, "dist"));
+  assert.ok(await fs.stat(path.join(appRoot, "dist", "articles", "science", "separated-roots", "index.html")));
+  await assert.rejects(() => fs.stat(path.join(root, "dist")));
+});
+
 test("image migration converts PNG atomically to canonical WebP and removes original", async () => {
   const { root, repository, seed } = await phase3Fixture(); const article = await seed("art_IMAGE", "Image", "science/image", "published"); const original = path.join(root, "50_Assets", "Infographics", "image.png"); await fs.mkdir(path.dirname(original), { recursive: true }); await sharp({ create: { width: 1200, height: 675, channels: 3, background: "#135" } }).png().toFile(original);
   const service = new ImageService(root, repository); const result = await service.migrate(false); assert.equal(result[0].status, "migrated"); await assert.rejects(() => fs.stat(original)); const refreshed = await repository.getById(article.id); assert.match(refreshed!.image!.path, /\.webp$/); assert.ok(await fs.stat(path.join(root, refreshed!.image!.path))); assert.equal((await service.inspect(refreshed!.image!)).issue, undefined);
@@ -37,13 +49,13 @@ test("directory deployment is atomic/no-op aware and backups verify/stage withou
 });
 
 test("GitHub Pages directory deploy commits and returns the actual Pages commit SHA", async () => {
-  const fixture = await createGitFixture("ebs-pages-"); const dist = path.join(fixture.root, "dist"); await fs.mkdir(path.join(dist, "assets"), { recursive: true }); await fs.writeFile(path.join(dist, "index.html"), "new site\n");
+  const fixture = await createGitFixture("ebs-pages-"); const dist = path.join(fixture.root, "dist"); await fs.mkdir(path.join(dist, "assets"), { recursive: true }); await fs.writeFile(path.join(dist, "index.html"), "new site\n"); await fs.writeFile(path.join(dist, "build-manifest.json"), JSON.stringify({ article_count: 0, base_path: "/" })); await fs.writeFile(path.join(dist, "search-index.json"), "[]"); await fs.writeFile(path.join(dist, "sitemap.xml"), "<urlset/>\n");
   const target = new DirectoryDeploymentTarget(fixture.vault); const changed = await target.deploy(dist, "hash-1"); assert.match(changed.message, /pushed origin\/main/); assert.match(changed.remoteRevision ?? "", /^[0-9a-f]{40}$/); assert.equal(changed.remoteRevision, (await git(fixture.vault, "rev-parse", "HEAD")).trim()); assert.equal(await git(fixture.vault, "status", "--porcelain"), ""); assert.match(await fs.readFile(path.join(fixture.seed, "README.md"), "utf8"), /fixture/);
   const unchanged = await target.deploy(dist, "hash-1"); assert.match(unchanged.message, /no Pages repository changes/); assert.equal(unchanged.remoteRevision, changed.remoteRevision); assert.equal(await fs.stat(path.join(fixture.vault, ".git")) !== undefined, true);
 });
 
 test("GitHub Pages deploy reports push failure", async () => {
-  const fixture = await createGitFixture("ebs-pages-fail-"); const dist = path.join(fixture.root, "dist"); await fs.mkdir(dist); await fs.writeFile(path.join(dist, "index.html"), "site\n"); await git(fixture.vault, "remote", "set-url", "origin", path.join(fixture.root, "missing.git"));
+  const fixture = await createGitFixture("ebs-pages-fail-"); const dist = path.join(fixture.root, "dist"); await fs.mkdir(dist); await fs.writeFile(path.join(dist, "index.html"), "site\n"); await fs.writeFile(path.join(dist, "build-manifest.json"), JSON.stringify({ article_count: 0, base_path: "/" })); await fs.writeFile(path.join(dist, "search-index.json"), "[]"); await fs.writeFile(path.join(dist, "sitemap.xml"), "<urlset/>\n"); await git(fixture.vault, "remote", "set-url", "origin", path.join(fixture.root, "missing.git"));
   await assert.rejects(() => new DirectoryDeploymentTarget(fixture.vault).deploy(dist, "hash-fail"), /Pages git push origin main failed/); assert.ok(await fs.stat(path.join(fixture.vault, ".git")));
 });
 
