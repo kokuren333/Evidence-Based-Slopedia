@@ -126,6 +126,7 @@ function markdown(value:string, links:Map<string,ArticleMetadata>, urls:PublicUr
   body = body.replace(/\\\(([^\n]+?)\\\)/g, (_m, expr) => protectMath(katex.renderToString(String(expr).trim(), { displayMode: false, throwOnError: false, output: "html" })));
   body = body.replace(/EBECODETOKEN(\d+)EBE/g, (_m, index) => protectedParts[Number(index)]);
   body = body.replace(/!\[\[([^\]|#]+)(?:#[^\]|]+)?(?:\|([^\]]+))?\]\]/g, (_whole, target, label) => `![${label ?? path.basename(String(target), path.extname(String(target)))}](${current?.image ? urls.assetUrl(`articles/${current.id}${path.extname(current.image.path).toLowerCase()}`) : urls.assetUrl(String(target).replace(/\\/g, "/"))})`);
+  body = body.replace(/(!\[[^\]]*\]\()((?:50_Assets)[\\/][^\s)]+)(\))/gi, (_whole, prefix, target, suffix) => `${prefix}${urls.assetUrl(String(target).replace(/\\/g, "/"))}${suffix}`);
   body = body.replace(/(?<!!)\[\[([^\]|#]+)(?:#[^\]|]+)?(?:\|([^\]]+))?\]\]/g, (whole,target,label) => { const article=links.get(normalize(target)); return article ? `[${label ?? article.title}](${urls.articleUrl(article)})` : whole; });
   const rendered = md.render(body).replace(/<h([2-6])>([^<]*)<\/h\1>/g, (_all: string, level: string, text: string) => { const h=headings.find(item=>item.level===Number(level)&&item.text===text); return `<h${level} id="${esc(h?.id ?? slugifyHeading(text))}">${text}</h${level}>`; });
   return rendered.replace(/EBEMATHTOKEN(\d+)EBE/g, (_m, index) => mathParts[Number(index)]);
