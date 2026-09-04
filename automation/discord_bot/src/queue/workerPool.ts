@@ -318,11 +318,10 @@ export class WorkerPool {
 async function verifyPublishedUrl(job: Job): Promise<void> {
   const origin = config.autoDeploy.publicUrl;
   if (!origin) throw new Error("DEPLOY_VERIFICATION_FAILED: EBS_PAGES_PUBLIC_URL is not configured");
-  // Daily news pages are built from the dated filename, whose basename is the
-  // canonical directoryName (for example Economy_Finance), not the enqueue
-  // slug (economy-finance). Keep verification aligned with the actual build
-  // output instead of probing a URL that can never exist.
-  const route = job.article?.slug ? `/articles/${job.article.slug.replace(/\\/g, "/").split("/").map(encodeURIComponent).join("/")}/` : job.forecast ? `/forecast/${encodeURIComponent(job.forecast.date)}/${encodeURIComponent(job.forecast.slug)}/` : job.daily ? `/news/${encodeURIComponent(job.daily.date)}/${encodeURIComponent(job.daily.directoryName)}/` : "/";
+  // The news builder derives the page directory from the dated filename,
+  // yielding fieldName (for example Economy_Finance). directoryName includes
+  // the source taxonomy number (02_Economy_Finance) and is not a public URL.
+  const route = job.article?.slug ? `/articles/${job.article.slug.replace(/\\/g, "/").split("/").map(encodeURIComponent).join("/")}/` : job.forecast ? `/forecast/${encodeURIComponent(job.forecast.date)}/${encodeURIComponent(job.forecast.slug)}/` : job.daily ? `/news/${encodeURIComponent(job.daily.date)}/${encodeURIComponent(job.daily.fieldName)}/` : "/";
   const basePath = (process.env.EBS_SITE_BASE_PATH ?? "/").replace(/\\/g, "/").replace(/^\/*/, "/").replace(/\/*$/, "/");
   const url = new URL(`${basePath === "/" ? "" : basePath.slice(0, -1)}${route}`, origin.endsWith("/") ? origin : `${origin}/`);
   let last = "";
