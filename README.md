@@ -1,4 +1,8 @@
-﻿# Evidence Based Slopedia
+# このリポジトリは完全なAI-Slopであり、修繕不能な技術的負債を抱えています
+
+これは運用上の警告です。次にゼロから作り直す設計、敵対的コードレビューの安全な要約、移行順序は [`NEXT_PLAN.md`](NEXT_PLAN.md) にまとめています。
+
+# Evidence Based Slopedia
 
 Evidence Based Slopedia（EBS）は、Evidence-Basedで高品質な「AI slop」を量産する、半分ネタで半分本気の知識サイト／編纂システムである。雑に大量生成するのではなく、ソース、引用、反証、限界、更新履歴を通して、読める・検証できる記事へ仕上げる。
 
