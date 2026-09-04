@@ -110,6 +110,7 @@ An article may be saved under `10_Published/` only when all conditions are met:
 - Published article frontmatter must follow `config/article_templates.yml` `publish_article.frontmatter_required` exactly: same keys, order, names, and expected scalar/list types.
 - Use canonical split fields: `category_id`, `category_name`, `category_path`, `subfield_name`, `subfield_path`, `moc`, `has_infographic`, and `infographic_path`.
 - Do not use legacy aliases such as `category`, `subfield`, `primary_category`, `primary_subfield`, `english_title`, or `infographic` in published articles.
+- For autonomous generation from news, Wikipedia, RSS, or other seed titles, the seed title is discovery input only. Do not use it verbatim as the article title; convert it into a related explanatory question or inquiry (for example, `「X」とは何か？背景・仕組み・影響と限界を検証する`). Preserve the seed as an alias/reference when useful.
 
 ## Canonical References
 
